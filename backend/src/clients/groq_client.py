@@ -1,9 +1,36 @@
-from groq import Groq
+import logging
+from collections.abc import AsyncIterator
+
+from groq import AsyncGroq
 
 from backend.src.configs.api_config import api_settings
 
-class GroqClient:
+logger = logging.getLogger(__name__)
+
+
+class AsyncGroqClient:
+    """Асинхронная обертка над Groq API."""
+
     def __init__(self):
-        self.client = Groq(
-            api_key=api_settings
+        self.client = AsyncGroq(api_key=api_settings.GROQ_API, max_retries=3)
+        self.model = "llama-3.3-70b-versatile"
+
+    async def generate_response(self, prompt: str) -> str:
+        response = await self.client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=self.model,
         )
+        return response.choices[0].message.content or ""
+
+    async def stream_chat(self, prompt: str) -> AsyncIterator[str]:
+        stream = await self.client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=self.model,
+            stream=True,
+        )
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+
+groq_client = AsyncGroqClient()
