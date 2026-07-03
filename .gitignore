@@ -1,11 +1,31 @@
-# Python
+# === Python ===
+.venv/
 __pycache__/
 *.pyc
-.venv/
-venv/
+*.pyo
+*.egg-info/
+dist/
+build/
 
-#ENV
-.env
+# === Node.js / Frontend ===
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.next/
+frontend/.nuxt/
 
-#IDE
+# === IDE ===
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# === Environment ===
+.env
+.env.local
+.env.*.local
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini

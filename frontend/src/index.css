@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Cyber design tokens (Figma) */
+  --color-cyber-bg: #0a0a0a;
+  --color-cyber-surface: #141414;
+  --color-cyber-elevated: #1a1a1a;
+  --color-cyber-border: #2a2a2a;
+  --color-cyber-muted: #6b6b6b;
+  --color-cyber-gold: #f5a623;
+  --color-cyber-gold-dim: #c4841a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-cyber-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Тонкий скроллбар в стиле Cyber */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
