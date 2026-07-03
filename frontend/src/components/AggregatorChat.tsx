@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from "react";
-import { fetchGeminiChat, splitIntoParagraphs } from "../api/gemini";
+import { fetchModelResponse } from "../api/chat";
 
 // ─── Типы ───────────────────────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ interface DialogItem {
   branchCount: number;
 }
 
-type ModelId = "gemini" | "gpt4o" | "claude35" | "llama3";
+type ModelId = "gemini" | "groq" | "gpt4o" | "claude35";
 
 interface ModelMeta {
   id: ModelId;
@@ -33,9 +33,9 @@ interface ModelMeta {
 
 const MODELS: ModelMeta[] = [
   { id: "gemini", label: "Gemini 3.5 Flash", cost: 2, color: "#4285f4" },
+  { id: "groq", label: "Llama 3.3 · Groq", cost: 1, color: "#f55036" },
   { id: "gpt4o", label: "GPT-4o", cost: 2, color: "#10a37f" },
   { id: "claude35", label: "Claude 3.5", cost: 3, color: "#d97757" },
-  { id: "llama3", label: "Llama 3", cost: 1, color: "#6366f1" },
 ];
 
 const TOKEN_BALANCE = 378;
@@ -101,7 +101,7 @@ const BRANCH_MESSAGES_BY_ANCHOR: Record<string, Message[]> = {
     {
       id: "b-a3",
       role: "assistant",
-      model: "llama3",
+      model: "groq",
       paragraphs: [
         "autovacuum_max_workers по числу ядер, autovacuum_naptime = 30s, autovacuum_vacuum_scale_factor = 0.05 на крупных таблицах.",
       ],
@@ -135,20 +135,6 @@ function getBranchMessages(anchor: string): Message[] {
 
 function getModel(id?: ModelId): ModelMeta {
   return MODELS.find((m) => m.id === id) ?? MODELS[0];
-}
-
-/** Запрос к выбранной модели; Gemini — реальный API, остальные — заглушка */
-async function fetchModelResponse(model: ModelId, prompt: string): Promise<string[]> {
-  if (model === "gemini") {
-    const text = await fetchGeminiChat(prompt);
-    return splitIntoParagraphs(text);
-  }
-
-  const label = getModel(model).label;
-  return [
-    `Модель ${label} пока не подключена к backend.`,
-    "Выберите Gemini для реальных ответов через /gemini/chat.",
-  ];
 }
 
 // ─── Иконки ──────────────────────────────────────────────────────────────────
@@ -256,9 +242,9 @@ function QuestionBadge({ onClick }: { onClick?: () => void }) {
 function ModelAvatar({ model, size = 20 }: { model: ModelMeta; size?: number }) {
   const icons: Record<ModelId, string> = {
     gemini: "✧",
+    groq: "⬡",
     gpt4o: "◯",
     claude35: "✦",
-    llama3: "⬡",
   };
   return (
     <span
@@ -284,6 +270,43 @@ function TokenPill({ amount }: { amount: number }) {
       <CoinIcon size={13} />
       <span className="text-sm font-medium text-[#f5a623]">{amount}</span>
     </div>
+  );
+}
+
+function StreamingToggle({
+  enabled,
+  onChange,
+}: {
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!enabled)}
+      aria-pressed={enabled}
+      title={enabled ? "Стриминг включён" : "Ответ целиком после генерации"}
+      className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 ${
+        enabled
+          ? "border-[#f5a623]/40 bg-[#f5a623]/10 text-[#f5a623]"
+          : "border-[#2a2a2a] bg-[#141414] text-[#6b6b6b] hover:border-[#3a3a3a] hover:text-[#9a9a9a]"
+      }`}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+        {enabled ? (
+          <>
+            <path d="M1 4.5h1.5v5H1V4.5zM4 3h1.5v8H4V3zM7 5h1.5v4H7V5zM10 2h1.5v10H10V2z" fill="currentColor" />
+          </>
+        ) : (
+          <path
+            d="M2.5 3.5h9a1 1 0 011 1v5a1 1 0 01-1 1h-9a1 1 0 01-1-1v-5a1 1 0 011-1z"
+            stroke="currentColor"
+            strokeWidth="1.2"
+          />
+        )}
+      </svg>
+      <span>{enabled ? "Стриминг" : "Целиком"}</span>
+    </button>
   );
 }
 
@@ -320,9 +343,11 @@ function ModelCostChip({
 interface HeaderProps {
   selectedModel: ModelId;
   onModelChange: (model: ModelId) => void;
+  streamingEnabled: boolean;
+  onStreamingChange: (enabled: boolean) => void;
 }
 
-function Header({ selectedModel, onModelChange }: HeaderProps) {
+function Header({ selectedModel, onModelChange, streamingEnabled, onStreamingChange }: HeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const current = getModel(selectedModel);
 
@@ -377,8 +402,9 @@ function Header({ selectedModel, onModelChange }: HeaderProps) {
         )}
       </div>
 
-      {/* Токены + профиль */}
-      <div className="flex w-[15%] min-w-[160px] items-center justify-end gap-3">
+      {/* Токены + стриминг + профиль */}
+      <div className="flex w-[15%] min-w-[220px] items-center justify-end gap-2">
+        <StreamingToggle enabled={streamingEnabled} onChange={onStreamingChange} />
         <TokenPill amount={TOKEN_BALANCE} />
         <button
           type="button"
@@ -842,6 +868,7 @@ export default function AggregatorChat() {
   const [branchInput, setBranchInput] = useState("");
   const [isMainLoading, setIsMainLoading] = useState(false);
   const [isBranchLoading, setIsBranchLoading] = useState(false);
+  const [streamingEnabled, setStreamingEnabled] = useState(true);
 
   const mainScrollRef = useRef<HTMLDivElement>(null);
 
@@ -878,36 +905,56 @@ export default function AggregatorChat() {
       paragraphs: [text],
     };
 
-    setMainMessages((prev) => [...prev, userMsg]);
+    const assistantId = `a-${Date.now()}`;
+
+    setMainMessages((prev) => [
+      ...prev,
+      userMsg,
+      {
+        id: assistantId,
+        role: "assistant",
+        model: selectedModel,
+        branchCount: 0,
+        paragraphs: ["…"],
+      },
+    ]);
     setMainInput("");
     setIsMainLoading(true);
 
     try {
-      const paragraphs = await fetchModelResponse(selectedModel, text);
-      setMainMessages((prev) => [
-        ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          model: selectedModel,
-          branchCount: 0,
-          paragraphs,
-        },
-      ]);
+      const paragraphs = await fetchModelResponse(
+        selectedModel,
+        text,
+        streamingEnabled,
+        streamingEnabled
+          ? (streamedParagraphs) => {
+              setMainMessages((prev) =>
+                prev.map((message) =>
+                  message.id === assistantId ? { ...message, paragraphs: streamedParagraphs } : message,
+                ),
+              );
+            }
+          : undefined,
+      );
+      setMainMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId ? { ...message, paragraphs } : message,
+        ),
+      );
     } catch {
-      setMainMessages((prev) => [
-        ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          model: selectedModel,
-          branchCount: 0,
-          paragraphs: [
-            "Не удалось получить ответ от сервера.",
-            "Убедитесь, что backend запущен: uvicorn backend.main:app --reload",
-          ],
-        },
-      ]);
+      setMainMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                paragraphs: [
+                  "Не удалось получить ответ от сервера.",
+                  "Убедитесь, что backend запущен: uvicorn backend.main:app --reload",
+                ],
+              }
+            : message,
+        ),
+      );
     } finally {
       setIsMainLoading(false);
     }
@@ -923,7 +970,19 @@ export default function AggregatorChat() {
       paragraphs: [text],
     };
 
-    setBranchMessages((prev) => [...prev, userMsg]);
+    const assistantId = `b-a-${Date.now()}`;
+
+    setBranchMessages((prev) => [
+      ...prev,
+      userMsg,
+      {
+        id: assistantId,
+        role: "assistant",
+        model: branchModel,
+        branchCount: 0,
+        paragraphs: ["…"],
+      },
+    ]);
     setBranchInput("");
     setIsBranchLoading(true);
 
@@ -932,26 +991,36 @@ export default function AggregatorChat() {
       : text;
 
     try {
-      const paragraphs = await fetchModelResponse(branchModel, prompt);
-      setBranchMessages((prev) => [
-        ...prev,
-        {
-          id: `b-a-${Date.now()}`,
-          role: "assistant",
-          model: branchModel,
-          paragraphs,
-        },
-      ]);
+      const paragraphs = await fetchModelResponse(
+        branchModel,
+        prompt,
+        streamingEnabled,
+        streamingEnabled
+          ? (streamedParagraphs) => {
+              setBranchMessages((prev) =>
+                prev.map((message) =>
+                  message.id === assistantId ? { ...message, paragraphs: streamedParagraphs } : message,
+                ),
+              );
+            }
+          : undefined,
+      );
+      setBranchMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId ? { ...message, paragraphs } : message,
+        ),
+      );
     } catch {
-      setBranchMessages((prev) => [
-        ...prev,
-        {
-          id: `b-a-${Date.now()}`,
-          role: "assistant",
-          model: branchModel,
-          paragraphs: ["Ошибка при запросе к серверу. Проверьте, что backend доступен."],
-        },
-      ]);
+      setBranchMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                paragraphs: ["Ошибка при запросе к серверу. Проверьте, что backend доступен."],
+              }
+            : message,
+        ),
+      );
     } finally {
       setIsBranchLoading(false);
     }
@@ -968,7 +1037,12 @@ export default function AggregatorChat() {
 
   return (
     <div className="flex h-full flex-col bg-[#0a0a0a] text-white">
-      <Header selectedModel={selectedModel} onModelChange={setSelectedModel} />
+      <Header
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+        streamingEnabled={streamingEnabled}
+        onStreamingChange={setStreamingEnabled}
+      />
 
       <div className="flex flex-1 overflow-hidden pt-[52px]">
         <Sidebar
