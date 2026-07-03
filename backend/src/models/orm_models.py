@@ -1,7 +1,8 @@
+import datetime
 from typing import Annotated
 
-from sqlalchemy import String, CheckConstraint, ForeignKey
-from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
+from sqlalchemy import String, CheckConstraint, ForeignKey, text, Text
+from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped, relationship
 
 intpk = Annotated[int, mapped_column(primary_key=True, autoincrement=True)]
 
@@ -13,6 +14,7 @@ str_16 = Annotated[str, 16]
 str_45 = Annotated[str, 45]
 str_50 = Annotated[str, 50]
 str_100 = Annotated[str, 100]
+
 
 class Base(DeclarativeBase):
     type_annotation_map = {
@@ -32,6 +34,7 @@ class Base(DeclarativeBase):
             cols.append(f"{col}={getattr(self, col)!r}")
         return f"<{self.__class__.__name__}, {', '.join(cols)}>"
 
+
 class User(Base):
     __tablename__ = "users"
 
@@ -40,15 +43,37 @@ class User(Base):
     last_name: Mapped[str_20]
     balance: Mapped[int] = mapped_column(default=0)
 
-    __table_args__ = (
-        CheckConstraint("balance >= 0", name="balance_check"),
+    __table_args__ = (CheckConstraint("balance >= 0", name="balance_check"),)
+
+    chats: Mapped["Chats"] = relationship(
+        back_populates="user",
     )
+
+
+class Messages(Base):
+    __tablename__ = "messages"
+
+    message_id: Mapped[intpk]
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        server_default=text("TIMEZONE('utc', now())")
+    )
+
+    chats: Mapped["Chats"] = relationship(
+        back_populates="messages",
+    )
+
 
 class Chats(Base):
     __tablename__ = "chats"
 
     chat_id: Mapped[intpk]
-    
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+
+    user: Mapped["User"] = relationship(
+        back_populates="chats",
+    )
+
 
 class Models(Base):
     __tablename__ = "models"
@@ -56,10 +81,9 @@ class Models(Base):
     model_id: Mapped[intpk]
     model_name: Mapped[str_20]
 
+
 class TargetsModel(Base):
     __tablename__ = "targets"
 
     target_id: Mapped[intpk]
     model_id: Mapped[int] = mapped_column(ForeignKey("models.model_id"))
-
-
