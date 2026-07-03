@@ -1,0 +1,16 @@
+services:
+  backend:
+    image: ai_agregator_backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+  frontend:
+    image: ai_agregator_frontend
+    build:
+      context: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
