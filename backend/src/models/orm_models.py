@@ -1,31 +1,23 @@
 import datetime
-from typing import Annotated
+from typing import Annotated, Any, Optional
 
-from sqlalchemy import String, CheckConstraint, ForeignKey, text, Text
+from sqlalchemy import String, ForeignKey, Text, func, DateTime
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy_utils import LtreeType
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped, relationship
 
 intpk = Annotated[int, mapped_column(primary_key=True, autoincrement=True)]
 
-str_3 = Annotated[str, 3]
-str_5 = Annotated[str, 5]
-str_12 = Annotated[str, 12]
 str_20 = Annotated[str, 20]
-str_16 = Annotated[str, 16]
-str_45 = Annotated[str, 45]
-str_50 = Annotated[str, 50]
 str_100 = Annotated[str, 100]
+str_255 = Annotated[str, 255]
 
 
 class Base(DeclarativeBase):
     type_annotation_map = {
-        str_3: String(3),
-        str_5: String(5),
-        str_12: String(12),
-        str_16: String(16),
         str_20: String(20),
-        str_45: String(45),
-        str_50: String(50),
         str_100: String(100),
+        str_255: String(255),
     }
 
     def __repr__(self):
@@ -39,51 +31,110 @@ class User(Base):
     __tablename__ = "users"
 
     user_id: Mapped[intpk]
-    first_name: Mapped[str_20]
-    last_name: Mapped[str_20]
-    balance: Mapped[int] = mapped_column(default=0)
+    email: Mapped[str_255] = mapped_column(unique=True, nullable=False)
+    username: Mapped[str_100] = mapped_column(nullable=False)
+    avatar_url: Mapped[Optional[str]]
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+    last_seen_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
 
-    __table_args__ = (CheckConstraint("balance >= 0", name="balance_check"),)
+    project_memberships = relationship("ProjectMember", back_populates="user")
+    messages = relationship("Message", back_populates="author")
 
-    chats: Mapped["Chats"] = relationship(
-        back_populates="user",
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    project_id: Mapped[intpk]
+    name: Mapped[str_255] = mapped_column(nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now()
+    )
+
+    members = relationship(
+        "ProjectMember", back_populates="project", cascade="all, delete-orphan"
+    )
+    messages = relationship(
+        "Message", back_populates="project", cascade="all, delete-orphan"
     )
 
 
-class Messages(Base):
+class ProjectMember(Base):
+    __tablename__ = "project_members"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.project_id"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), primary_key=True)
+    joined_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+
+    project = relationship("Project", back_populates="members")
+    user = relationship("User", back_populates="project_memberships")
+
+
+class AIModel(Base):
+    __tablename__ = "ai_models"
+
+    model_id: Mapped[intpk]
+    model_name: Mapped[str_20] = mapped_column(nullable=False)
+    model_provider: Mapped[str_20] = mapped_column(nullable=False)
+
+
+class Message(Base):
     __tablename__ = "messages"
 
     message_id: Mapped[intpk]
-    content: Mapped[str] = mapped_column(Text)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.project_id"), nullable=False
+    )
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("messages.message_id")
+    )
+
+    # LTREE path (например: '1.5.23')
+    path: Mapped[str] = mapped_column(LtreeType)
+
+    # Контекстный якорь
+    context_anchor: Mapped[Optional[str]] = mapped_column(Text)
+    context_text_snippet: Mapped[Optional[str]] = mapped_column(Text)
+
+    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.user_id"))
+    author_type: Mapped[str_20] = mapped_column(nullable=False)  # 'user' | 'ai'
+
+    # AI метаданные
+    model_name: Mapped[Optional[str_100]]
+    ai_provider: Mapped[Optional[str_20]]
+
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    message_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    position: Mapped[int] = mapped_column(default=0)
+
     created_at: Mapped[datetime.datetime] = mapped_column(
-        server_default=text("TIMEZONE('utc', now())")
+        DateTime(timezone=True), default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now()
     )
 
-    chats: Mapped["Chats"] = relationship(
-        back_populates="messages",
+    project = relationship("Project", back_populates="messages")
+    author = relationship("User", back_populates="messages")
+    parent: Mapped[Optional["Message"]] = relationship(
+        "Message",
+        remote_side="Message.message_id",
+        back_populates="children",
     )
-
-
-class Chats(Base):
-    __tablename__ = "chats"
-
-    chat_id: Mapped[intpk]
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
-
-    user: Mapped["User"] = relationship(
-        back_populates="chats",
+    children: Mapped[list["Message"]] = relationship(
+        "Message",
+        back_populates="parent",
     )
-
-
-class Models(Base):
-    __tablename__ = "models"
-
-    model_id: Mapped[intpk]
-    model_name: Mapped[str_20]
-
-
-class TargetsModel(Base):
-    __tablename__ = "targets"
-
-    target_id: Mapped[intpk]
-    model_id: Mapped[int] = mapped_column(ForeignKey("models.model_id"))
