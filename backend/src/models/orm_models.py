@@ -137,8 +137,9 @@ class AIModel(Base):
     __tablename__ = "ai_models"
 
     model_id: Mapped[intpk]  # Уникальный идентификатор
+    name: Mapped[str_100] = mapped_column(nullable=False)
     family: Mapped[str_20] = mapped_column(nullable=False)  # Внутреннее название модели
-    display_name: Mapped[str_20] = mapped_column(nullable=False)  # Имя в интерфейсе
+    display_name: Mapped[str_100] = mapped_column(nullable=False)  # Имя в интерфейсе
 
 
 class AIProviderModel(Base):
