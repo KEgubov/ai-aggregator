@@ -1,7 +1,10 @@
 import asyncio
 
+from sqlalchemy import text
+
 from backend.src.core.database import async_engine
 from backend.src.models.orm_models import Base
+
 
 async def create_tables() -> None:
     """
@@ -11,7 +14,10 @@ async def create_tables() -> None:
     :return: None
     """
     async with async_engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS ltree"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-asyncio.run(create_tables())
+
+if __name__ == "__main__":
+    asyncio.run(create_tables())
