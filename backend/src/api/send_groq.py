@@ -9,15 +9,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/groq", tags=["chat"])
 
-
-@router.get("/chat")
-async def response_groq(text: str) -> str:
-    response = await groq_client.generate_response(text)
-    return response or "Не удалось получить ответ от провайдера Groq."
-
-
-@router.get("/chat/stream")
-async def response_groq_stream(text: str) -> StreamingResponse:
+@router.get("/send")
+async def response_groq_stream(model_name: str, text: str) -> StreamingResponse:
     async def event_generator():
         async for chunk in groq_client.stream_chat(text):
             yield chunk
