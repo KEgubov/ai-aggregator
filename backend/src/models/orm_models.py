@@ -1,11 +1,28 @@
+"""ORM-модели приложения AI Agregator.
+
+Архитектура чатов
+-----------------
+Два независимых типа чатов без связи между собой:
+
+* **Chat** (``chats``) — личный чат вне проекта. Доступ только у владельца
+  (``owner_id``). Участников нет.
+  Сообщения хранятся в :class:`ChatMessage` (``chat_messages``).
+* **ProjectChat** (``project_chats``) — чат внутри проекта. Проект доступен
+  через ``ProjectMember`` → :class:`Project`. Участники конкретного чата —
+  через :class:`ChatMember` (только для проектных чатов). Прямого ``owner_id``
+  у проектного чата нет.
+
+Таблицы сообщений разделены: личные и проектные сообщения не смешиваются.
+"""
+
 import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Optional
 
-from sqlalchemy import String, ForeignKey, Text, func, DateTime
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy_utils import LtreeType
+from sqlalchemy import String, ForeignKey, Text, func, DateTime, Numeric, Boolean
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped, relationship
+from sqlalchemy_utils import LtreeType
 
 intpk = Annotated[int, mapped_column(primary_key=True, autoincrement=True)]
 
@@ -15,20 +32,17 @@ str_255 = Annotated[str, 255]
 
 
 class Base(DeclarativeBase):
-    """Базовый declarative-класс для всех ORM-моделей приложения.
-
-    Содержит сопоставление типовых строковых аннотаций (``str_20``, ``str_100``,
-    ``str_255``) с типами колонок SQLAlchemy и единую реализацию ``__repr__``
-    для удобной отладки и логирования.
-    """
+    """Базовый declarative-класс для всех ORM-моделей приложения."""
 
     type_annotation_map = {
         str_20: String(20),
         str_100: String(100),
         str_255: String(255),
+        Decimal: Numeric(),
+        bool: Boolean(),
     }
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         cols = []
         for col in self.__table__.columns.keys():
             cols.append(f"{col}={getattr(self, col)!r}")
@@ -36,198 +50,458 @@ class Base(DeclarativeBase):
 
 
 class User(Base):
-    """Пользователь системы — человек, работающий с проектами и сообщениями.
+    """Пользователь системы.
 
-    Один пользователь может состоять в нескольких проектах (через
-    :class:`ProjectMember`) и быть автором множества сообщений
-    (:class:`Message`).
+    Связь с чатами различается по типу:
+
+    * личные чаты (:class:`Chat`) — напрямую через ``owned_personal_chats``
+      (только владелец);
+    * проектные чаты (:class:`ProjectChat`) — через ``project_memberships``
+      → :class:`Project`; участие в чате — через ``chat_memberships``
+      → :class:`ChatMember`.
+
+    Attributes:
+        user_id: Первичный ключ.
+        email: Уникальный адрес электронной почты (логин).
+        username: Отображаемое имя.
+        about_me: Краткое описание профиля (до 20 символов).
+        avatar_url: URL аватара, необязательно.
+        created_at: Дата регистрации.
+        last_seen_at: Время последней активности, необязательно.
     """
+
     __tablename__ = "users"
 
-    user_id: Mapped[intpk]  # Уникальный идентификатор
-    email: Mapped[str_255] = mapped_column(unique=True, nullable=False)  # Логин (уникальный)
-    username: Mapped[str_100] = mapped_column(nullable=False)  # Отображаемое имя
-    avatar_url: Mapped[Optional[str]]  # Ссылка на аватар
+    user_id: Mapped[intpk]
+    email: Mapped[str_255] = mapped_column(unique=True, nullable=False)
+    username: Mapped[str_100] = mapped_column(nullable=False)
+    about_me: Mapped[str_20] = mapped_column(nullable=False)
+    avatar_url: Mapped[Optional[str]]
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
-    )  # Дата регистрации
+    )
     last_seen_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True)
-    )  # Последний раз был в сети
+    )
 
     project_memberships = relationship("ProjectMember", back_populates="user")
-    """Членства пользователя в проектах (связь many-to-many через :class:`ProjectMember`)."""
+    chat_memberships = relationship("ChatMember", back_populates="user")
+    chat_messages = relationship("ChatMessage", back_populates="author")
+    project_chat_messages = relationship("ProjectChatMessage", back_populates="author")
 
-    messages = relationship("Message", back_populates="author")
-    """Сообщения, автором которых является этот пользователь."""
+    owned_projects = relationship(
+        "Project", back_populates="owner", foreign_keys="Project.owner_id"
+    )
+    owned_personal_chats = relationship(
+        "Chat", back_populates="owner", foreign_keys="Chat.owner_id"
+    )
 
 
 class Project(Base):
-    """Проект — изолированный контекст чата со своей историей и участниками.
+    """Проект — изолированное рабочее пространство.
 
-    Каждый проект принадлежит одному владельцу и содержит дерево сообщений.
-    Удаление проекта каскадно удаляет участников и сообщения.
+    Через проект пользователи получают доступ к проектным чатам
+    (:class:`ProjectChat`). Личные чаты (:class:`Chat`) с проектом
+    не связаны.
+
+    Attributes:
+        project_id: Первичный ключ.
+        name: Название проекта.
+        description: Развёрнутое описание, необязательно.
+        owner_id: Создатель и владелец проекта.
+        created_at: Дата создания.
+        updated_at: Дата последнего изменения.
     """
+
     __tablename__ = "projects"
 
-    project_id: Mapped[intpk]  # Уникальный идентификатор
-    name: Mapped[str_255] = mapped_column(nullable=False)  # Название проекта
-    description: Mapped[Optional[str]] = mapped_column(Text)  # Описание проекта (необязательно)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))  # Кто создал
+    project_id: Mapped[intpk]
+    name: Mapped[str_255] = mapped_column(nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
-    )  # Дата создания
+    )
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), onupdate=func.now()
-    )  # Дата обновления
+    )
 
     members = relationship(
         "ProjectMember", back_populates="project", cascade="all, delete-orphan"
     )
-    """Участники проекта; при удалении проекта записи членства удаляются каскадно."""
-
-    messages = relationship(
-        "Message", back_populates="project", cascade="all, delete-orphan"
+    project_chats = relationship(
+        "ProjectChat", back_populates="project", cascade="all, delete-orphan"
     )
-    """Все сообщения проекта; при удалении проекта удаляются каскадно."""
+    owner = relationship("User", back_populates="owned_projects", foreign_keys=[owner_id])
+
+
+class Chat(Base):
+    """Личный чат вне проекта.
+
+    Не имеет ``project_id`` и не связан с :class:`ProjectChat`.
+    Доступ только у владельца (``owner_id``); участников нет.
+
+    Attributes:
+        chat_id: Первичный ключ.
+        name: Название чата.
+        description: Описание, необязательно.
+        owner_id: Создатель чата.
+        ai_models: Список имён AI-моделей, доступных в чате.
+        created_at: Дата создания.
+        updated_at: Дата последнего изменения.
+    """
+
+    __tablename__ = "chats"
+
+    chat_id: Mapped[intpk]
+    name: Mapped[str_255] = mapped_column(nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    ai_models: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now()
+    )
+
+    owner = relationship("User", back_populates="owned_personal_chats", foreign_keys=[owner_id])
+    messages = relationship(
+        "ChatMessage",
+        back_populates="chat",
+        cascade="all, delete-orphan",
+    )
+
+
+class ProjectChat(Base):
+    """Чат внутри проекта.
+
+    Принадлежит одному :class:`Project`. Участники чата — через
+    :class:`ChatMember`. Членство в проекте (:class:`ProjectMember`) —
+    обязательное условие (проверяется на уровне приложения). Поля
+    ``owner_id`` нет. С личными чатами (:class:`Chat`) не пересекается.
+
+    Attributes:
+        chat_id: Первичный ключ (отдельная последовательность от ``chats.chat_id``).
+        project_id: Родительский проект.
+        name: Название чата.
+        description: Описание, необязательно.
+        ai_models: Список имён AI-моделей, доступных в чате.
+        created_at: Дата создания.
+        updated_at: Дата последнего изменения.
+    """
+
+    __tablename__ = "project_chats"
+
+    chat_id: Mapped[intpk]
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.project_id"), nullable=False
+    )
+    name: Mapped[str_255] = mapped_column(nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    ai_models: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now()
+    )
+
+    project = relationship("Project", back_populates="project_chats")
+    members = relationship(
+        "ChatMember", back_populates="chat", cascade="all, delete-orphan"
+    )
+    messages = relationship(
+        "ProjectChatMessage",
+        back_populates="chat",
+        cascade="all, delete-orphan",
+    )
+
+
+class ChatMember(Base):
+    """Участник проектного чата.
+
+    Связывает :class:`User` и :class:`ProjectChat`. К личным чатам
+    (:class:`Chat`) не применяется. Пользователь должен быть участником
+    проекта (:class:`ProjectMember`) — это обеспечивается на уровне
+    приложения, не FK.
+
+    Attributes:
+        chat_id: Проектный чат (FK → ``project_chats.chat_id``).
+        user_id: Участник.
+        joined_at: Дата присоединения.
+    """
+
+    __tablename__ = "chat_members"
+
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("project_chats.chat_id"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id"), primary_key=True
+    )
+    joined_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+
+    chat = relationship("ProjectChat", back_populates="members")
+    user = relationship("User", back_populates="chat_memberships")
 
 
 class ProjectMember(Base):
-    """Связь many-to-many между пользователями и проектами.
+    """Участник проекта.
 
-    Составной первичный ключ ``(project_id, user_id)`` гарантирует, что один
-    пользователь не может быть добавлен в проект дважды.
+    Даёт доступ к проекту. Участие в конкретном проектном чате
+    оформляется отдельно через :class:`ChatMember`.
+
+    Attributes:
+        project_id: Проект.
+        user_id: Участник.
+        joined_at: Дата присоединения.
     """
+
     __tablename__ = "project_members"
 
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.project_id"), primary_key=True
-    )  # Какой проект
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), primary_key=True)  # Какой пользователь
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id"), primary_key=True
+    )
     joined_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
-    )  # Когда присоединился
+    )
 
     project = relationship("Project", back_populates="members")
-    """Проект, к которому относится это членство."""
-
     user = relationship("User", back_populates="project_memberships")
-    """Пользователь — участник проекта."""
 
 
 class AIProviders(Base):
-    """Провайдер AI-моделей (Groq, OpenRouter и т.п.).
+    """Провайдер AI-моделей (OpenAI, Google, Groq и т.д.).
 
-    Хранит идентификатор и базовый URL API провайдера. Конкретные модели
-    и тарифы задаются через :class:`AIProviderModel`.
+    Note:
+        Имя класса во множественном числе — историческое; одна запись
+        описывает одного провайдера.
+
+    Attributes:
+        provider_id: Первичный ключ.
+        provider_name: Короткое имя провайдера.
+        base_url: Базовый URL API провайдера.
     """
+
     __tablename__ = "ai_providers"
 
-    provider_id: Mapped[intpk]  # Уникальный идентификатор
-    provider_name: Mapped[str_20] = mapped_column(nullable=False)  # Системное имя (groq, openrouter)
-    base_url: Mapped[str_100]  # Базовый URL API
+    provider_id: Mapped[intpk]
+    provider_name: Mapped[str_20] = mapped_column(nullable=False)
+    base_url: Mapped[str_100] = mapped_column(nullable=False)
+
+    provider_models = relationship("AIProviderModel", back_populates="provider")
 
 
 class AIModel(Base):
-    """Логическая AI-модель, независимая от конкретного провайдера.
+    """Логическая AI-модель в каталоге (независимо от провайдера).
 
-    Одна семья моделей (например, Llama 3.3) может быть доступна у нескольких
+    Один и тот же семейство моделей может быть представлен у разных
     провайдеров через :class:`AIProviderModel`.
+
+    Attributes:
+        model_id: Первичный ключ.
+        model_name: Внутреннее имя модели.
+        family: Семейство моделей (например, ``gpt``, ``gemini``).
+        display_name: Имя для отображения в UI.
+        description: Краткое описание (до 20 символов).
     """
+
     __tablename__ = "ai_models"
 
-    model_id: Mapped[intpk]  # Уникальный идентификатор
-    name: Mapped[str_100] = mapped_column(nullable=False)
-    family: Mapped[str_20] = mapped_column(nullable=False)  # Внутреннее название модели
-    display_name: Mapped[str_100] = mapped_column(nullable=False)  # Имя в интерфейсе
+    model_id: Mapped[intpk]
+    model_name: Mapped[str_100] = mapped_column(nullable=False)
+    family: Mapped[str_20] = mapped_column(nullable=False)
+    display_name: Mapped[str_100] = mapped_column(nullable=False)
+    description: Mapped[str_20] = mapped_column(nullable=False)
+
+    provider_models = relationship("AIProviderModel", back_populates="model")
 
 
 class AIProviderModel(Base):
     """Конкретная модель у конкретного провайдера с тарифами и возможностями.
 
-    Связывает :class:`AIProviders` и :class:`AIModel` и хранит имя модели
-    на стороне API провайдера, цены и флаги поддерживаемых функций.
+    Связывает :class:`AIProviders` и :class:`AIModel`, хранит цены
+    и флаги поддерживаемых функций.
+
+    Attributes:
+        provider_model_id: Первичный ключ.
+        provider_id: Провайдер.
+        model_id: Логическая модель из каталога.
+        provider_model_name: Имя модели в API провайдера.
+        input_price: Цена за единицу входных токенов.
+        output_price: Цена за единицу выходных токенов.
+        context_length: Максимальный размер контекста.
+        supports_stream: Поддержка потоковой генерации.
+        supports_tools: Поддержка вызова инструментов.
+        supports_vision: Поддержка изображений.
     """
+
     __tablename__ = "ai_provider_models"
 
-    provider_model_id: Mapped[intpk]  # Уникальный идентификатор
+    provider_model_id: Mapped[intpk]
     provider_id: Mapped[int] = mapped_column(
-        ForeignKey("ai_providers.provider_id")
-    )  # Провайдер
+        ForeignKey("ai_providers.provider_id"), nullable=False
+    )
     model_id: Mapped[int] = mapped_column(
-        ForeignKey("ai_models.model_id")
-    )  # Логическая модель
-    provider_model_name: Mapped[str_100] = mapped_column(nullable=False)  # Имя модели в API провайдера
-    input_price: Mapped[Decimal]  # Цена входных токенов
-    output_price: Mapped[Decimal]  # Цена выходных токенов
-    context_length: Mapped[int]  # Макс. размер контекста (токены)
-    supports_stream: Mapped[bool]  # Потоковая генерация
-    supports_tools: Mapped[bool]  # Function calling
-    supports_vision: Mapped[bool]  # Ввод изображений
+        ForeignKey("ai_models.model_id"), nullable=False
+    )
+    provider_model_name: Mapped[str_100] = mapped_column(nullable=False)
+    input_price: Mapped[Decimal] = mapped_column(nullable=False)
+    output_price: Mapped[Decimal] = mapped_column(nullable=False)
+    context_length: Mapped[int] = mapped_column(nullable=False)
+    supports_stream: Mapped[bool] = mapped_column(nullable=False)
+    supports_tools: Mapped[bool] = mapped_column(nullable=False)
+    supports_vision: Mapped[bool] = mapped_column(nullable=False)
+
+    provider = relationship("AIProviders", back_populates="provider_models")
+    model = relationship("AIModel", back_populates="provider_models")
 
 
-class Message(Base):
-    """Сообщение в чате проекта — узел дерева диалога.
+class ChatMessage(Base):
+    """Сообщение в личном чате (:class:`Chat`).
 
-    Сообщения организованы в иерархию через ``parent_id`` и материализованный
-    путь ``path`` (PostgreSQL ``ltree``). Поддерживают текст, структурированный
-    JSON-контент, привязку к выделенному фрагменту документа и метаданные
-    AI-генерации.
+    Хранится в таблице ``chat_messages``. Не связано с
+    :class:`ProjectChatMessage`.
+
+    Attributes:
+        message_id: Первичный ключ.
+        chat_id: Личный чат-владелец.
+        parent_id: Родительское сообщение в дереве веток.
+        path: Путь в дереве (``ltree``), например ``1.5.23``.
+        context_anchor: Якорь контекста для ветвления.
+        context_text_snippet: Фрагмент текста контекста.
+        author_id: Автор (пользователь), необязательно для AI-сообщений.
+        author_type: Тип автора (``user``, ``assistant`` и т.д.).
+        ai_model: Имя модели на момент генерации.
+        ai_provider: Имя провайдера на момент генерации.
+        content: Текст сообщения.
+        content_json: Структурированное содержимое (JSONB).
+        message_metadata: Произвольные метаданные (JSONB).
+        position: Порядковый номер среди siblings.
+        created_at: Дата создания.
+        updated_at: Дата последнего изменения.
     """
-    __tablename__ = "messages"
 
-    message_id: Mapped[intpk]  # Уникальный идентификатор
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.project_id"), nullable=False
-    )  # К какому проекту относится
+    __tablename__ = "chat_messages"
+
+    message_id: Mapped[intpk]
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("chats.chat_id"), nullable=False
+    )
     parent_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("messages.message_id")
-    )  # Родительское сообщение (None — корень)
+        ForeignKey("chat_messages.message_id")
+    )
 
-    path: Mapped[str] = mapped_column(LtreeType)  # Материализованный путь (ltree)
-    # Пример: "1.5.23" означает:
-    #   - Корневое сообщение #1
-    #     - Его потомок #5
-    #       - Его потомок #23
+    path: Mapped[str] = mapped_column(LtreeType, nullable=False)
 
-    # Контекстный якорь
-    context_anchor: Mapped[Optional[str]] = mapped_column(Text)  # Якорь в документе
-    context_text_snippet: Mapped[Optional[str]] = mapped_column(Text)  # Текст, который выделили
+    context_anchor: Mapped[Optional[str]] = mapped_column(Text)
+    context_text_snippet: Mapped[Optional[str]] = mapped_column(Text)
 
-    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.user_id"))  # Кто написал
-    author_type: Mapped[str_20] = mapped_column(nullable=False)  # 'user' | 'ai'
+    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.user_id"))
+    author_type: Mapped[str_20] = mapped_column(nullable=False)
 
-    # AI метаданные
-    ai_model: Mapped[Optional[str_100]]  # llama-3, gpt-4
-    ai_provider: Mapped[Optional[str_20]]  # groq, openrouter
+    ai_model: Mapped[Optional[str_100]]
+    ai_provider: Mapped[Optional[str_20]]
 
-    content: Mapped[str] = mapped_column(Text, nullable=False)  # Текст сообщения
-    content_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)  # Структурированный контент
-    message_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)  # Токены, стоимость, latency
-    position: Mapped[int] = mapped_column(default=0)  # Порядок среди siblings
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    message_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    position: Mapped[int] = mapped_column(default=0)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
-    )  # Дата создания
+    )
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), onupdate=func.now()
-    )  # Дата обновления
+    )
 
-    project = relationship("Project", back_populates="messages")
-    """Проект, в рамках которого находится сообщение."""
+    chat = relationship("Chat", back_populates="messages")
+    author = relationship("User", back_populates="chat_messages")
 
-    author = relationship("User", back_populates="messages")
-    """Пользователь-автор (если ``author_type`` — ``user``)."""
-
-    parent: Mapped[Optional["Message"]] = relationship(
-        "Message",
-        remote_side="Message.message_id",
+    parent: Mapped[Optional["ChatMessage"]] = relationship(
+        "ChatMessage",
+        remote_side="ChatMessage.message_id",
         back_populates="children",
     )
-    """Родительское сообщение в дереве диалога."""
-
-    children: Mapped[list["Message"]] = relationship(
-        "Message",
+    children: Mapped[list["ChatMessage"]] = relationship(
+        "ChatMessage",
         back_populates="parent",
     )
-    """Дочерние сообщения — ответы и ветки, растущие от этого узла."""
+
+
+class ProjectChatMessage(Base):
+    """Сообщение в проектном чате (:class:`ProjectChat`).
+
+    Хранится в таблице ``project_chat_messages``. Не связано с
+    :class:`ChatMessage`.
+
+    Attributes:
+        message_id: Первичный ключ.
+        chat_id: Проектный чат-владелец.
+        parent_id: Родительское сообщение в дереве веток.
+        path: Путь в дереве (``ltree``), например ``1.5.23``.
+        context_anchor: Якорь контекста для ветвления.
+        context_text_snippet: Фрагмент текста контекста.
+        author_id: Автор (пользователь), необязательно для AI-сообщений.
+        author_type: Тип автора (``user``, ``assistant`` и т.д.).
+        ai_model: Имя модели на момент генерации.
+        ai_provider: Имя провайдера на момент генерации.
+        content: Текст сообщения.
+        content_json: Структурированное содержимое (JSONB).
+        message_metadata: Произвольные метаданные (JSONB).
+        position: Порядковый номер среди siblings.
+        created_at: Дата создания.
+        updated_at: Дата последнего изменения.
+    """
+
+    __tablename__ = "project_chat_messages"
+
+    message_id: Mapped[intpk]
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("project_chats.chat_id"), nullable=False
+    )
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("project_chat_messages.message_id")
+    )
+
+    path: Mapped[str] = mapped_column(LtreeType, nullable=False)
+
+    context_anchor: Mapped[Optional[str]] = mapped_column(Text)
+    context_text_snippet: Mapped[Optional[str]] = mapped_column(Text)
+
+    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.user_id"))
+    author_type: Mapped[str_20] = mapped_column(nullable=False)
+
+    ai_model: Mapped[Optional[str_100]]
+    ai_provider: Mapped[Optional[str_20]]
+
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    message_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    position: Mapped[int] = mapped_column(default=0)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now()
+    )
+
+    chat = relationship("ProjectChat", back_populates="messages")
+    author = relationship("User", back_populates="project_chat_messages")
+
+    parent: Mapped[Optional["ProjectChatMessage"]] = relationship(
+        "ProjectChatMessage",
+        remote_side="ProjectChatMessage.message_id",
+        back_populates="children",
+    )
+    children: Mapped[list["ProjectChatMessage"]] = relationship(
+        "ProjectChatMessage",
+        back_populates="parent",
+    )
