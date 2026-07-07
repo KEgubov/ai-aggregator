@@ -1,19 +1,13 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   server: {
+    port: 5173,
     proxy: {
-      "/gemini": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
-      "/groq": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
+      '/models': 'http://127.0.0.1:8000',
+      '/message': 'http://127.0.0.1:8000',
     },
   },
 });

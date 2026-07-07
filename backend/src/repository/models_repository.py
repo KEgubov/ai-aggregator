@@ -1,10 +1,9 @@
-import asyncio
-
-from sqlalchemy import select, delete, update, func
+from sqlalchemy import select, update, func
 from sqlalchemy.dialects.mysql import insert
 
 from backend.src.core.database import async_session
-from backend.src.models.orm_models import AIModel, Chat
+from backend.src.models.orm_models import AIModel, Chat, AIProviders, \
+    AIProviderModel
 
 
 class ModelRepository:
@@ -19,14 +18,18 @@ class ModelRepository:
             return result.all() if result else None
 
     @staticmethod
-    async def model_name_for_api(model_id: int) -> list[str]:
+    async def meta_for_api(model_id: int) -> list[tuple[str]]:
         async with async_session() as session:
-            query = (
-                select(AIModel.model_name)
+            stmt = (
+                select(AIModel.model_name, AIProviders.provider_name)
+                .join(AIProviderModel,
+                      AIModel.model_id == AIProviderModel.model_id)
+                .join(AIProviders,
+                      AIProviderModel.provider_id == AIProviders.provider_id)
                 .where(AIModel.model_id == model_id)
             )
-            result = await session.execute(query)
-            return result.scalars().all()
+            result = await session.execute(stmt)
+            return result.all() if result else None
 
     @staticmethod
     async def save_model_for_the_chat(model_id: int):
@@ -72,5 +75,3 @@ class ModelRepository:
             await session.commit()
 
 model_repository = ModelRepository()
-# print(asyncio.run(model_repository.all_models_name()))
-# print(asyncio.run(model_repository.model_name_for_api(1)))

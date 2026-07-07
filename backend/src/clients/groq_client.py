@@ -8,24 +8,23 @@ from backend.src.configs.api_config import api_settings
 logger = logging.getLogger(__name__)
 
 
-class AsyncGroqClient:
+class GroqClient:
     """Асинхронная обертка над Groq API."""
 
     def __init__(self):
         self.client = AsyncGroq(api_key=api_settings.GROQ_API, max_retries=3)
-        self.model = "llama-3.3-70b-versatile"
 
-    async def generate_response(self, prompt: str) -> str:
+    async def generate_response(self, model: str, prompt: str) -> str:
         response = await self.client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model=self.model,
+            model=model,
         )
         return response.choices[0].message.content or ""
 
-    async def stream_chat(self, prompt: str) -> AsyncIterator[str]:
+    async def stream_chat(self, model: str, prompt: str) -> AsyncIterator[str]:
         stream = await self.client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model=self.model,
+            model=model,
             stream=True,
         )
         async for chunk in stream:
@@ -33,4 +32,4 @@ class AsyncGroqClient:
                 yield chunk.choices[0].delta.content
 
 
-groq_client = AsyncGroqClient()
+groq_client = GroqClient()

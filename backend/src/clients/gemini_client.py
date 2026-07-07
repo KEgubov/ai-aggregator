@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 class GeminiClient:
     def __init__(self):
         self.client = genai.Client(api_key=api_settings.GEMINI_API)
-        self.model = "gemini-3.5-flash"
 
     async def stream_response(
         self,
+        model: str,
         prompt: str,
         retries: int = 3,
         delay: int = 2,
@@ -24,7 +24,7 @@ class GeminiClient:
         for attempt in range(retries):
             try:
                 stream = await self.client.aio.models.generate_content_stream(
-                    model=self.model,
+                    model=model,
                     contents=prompt,
                 )
                 async for chunk in stream:

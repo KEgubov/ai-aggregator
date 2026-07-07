@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/api/chat.ts","./src/api/gemini.ts","./src/api/groq.ts","./src/components/aggregatorchat.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/api/message.ts","./src/api/models.ts","./src/components/chatinput.tsx","./src/components/chatthreading.jsx","./src/types/message.ts"],"version":"5.9.3"}
