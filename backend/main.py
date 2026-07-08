@@ -5,9 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.src.api import main_router
+from backend.src.api.exception_handler import duplicate_error_handler
 from backend.src.clients.gemini_client import GeminiClient
 from backend.src.clients.groq_client import GroqClient
 from backend.src.core.logger import setup_logging
+from backend.src.service.exceptions import DuplicateError
 
 setup_logging("AI Agregator")
 
@@ -34,4 +36,5 @@ app.add_middleware(
 
 app.include_router(main_router)
 
+app.add_exception_handler(DuplicateError, duplicate_error_handler)
 
