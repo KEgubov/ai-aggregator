@@ -1,4 +1,4 @@
-from sqlalchemy import Row, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session

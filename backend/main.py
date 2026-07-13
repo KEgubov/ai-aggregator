@@ -12,9 +12,11 @@ from backend.src.clients.groq_client import GroqClient
 from backend.src.configs.auth_config import authx_settings
 from backend.src.core.logger import setup_logging
 from backend.src.repository.auth_repository import AuthRepository
+from backend.src.repository.chat_repository import ChatRepository
 from backend.src.repository.models_repository import ModelRepository
 from backend.src.repository.user_repository import UserRepository
 from backend.src.service.auth_service import AuthService
+from backend.src.service.chat_service import ChatService
 from backend.src.service.exceptions import DuplicateError
 from backend.src.service.model_service import ModelService
 from backend.src.service.user_service import UserService
@@ -37,6 +39,9 @@ async def init_services(app: FastAPI):
     )
     app.state.model_service = ModelService(
         model_repository=ModelRepository(),
+    )
+    app.state.chat_service = ChatService(
+        chat_repository=ChatRepository(),
     )
 
 async def init_clients(app: FastAPI):

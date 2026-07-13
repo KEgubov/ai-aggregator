@@ -15,12 +15,9 @@ class UserService:
             return result_dto
         return None
 
-    async def validate_current_user(self, user_id: int) -> list[
-                                                               CurrentUserDTO] | None:
+    async def validate_current_user(self, user_id: int) -> CurrentUserDTO | None:
         current_user = await self.user_repository.get_current_user_by_id(user_id)
         if current_user:
-            result_dto = [
-                CurrentUserDTO.model_validate(current_user, from_attributes=True)
-            ]
+            result_dto = CurrentUserDTO.model_validate(current_user, from_attributes=True)
             return result_dto
         return None

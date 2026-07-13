@@ -1,6 +1,3 @@
-import asyncio
-
-from backend.src.repository.models_repository import ModelRepository
 from backend.src.schemas.custom import AIModelMetaDTO, ModelProviderResponse
 
 
@@ -18,7 +15,8 @@ class ModelService:
             return result_dto
         return None
 
-    async def get_meta_for_api(self, model_id: int) -> ModelProviderResponse | None:
+    async def get_meta_for_api(self, model_id: int) -> list[
+                                                           ModelProviderResponse] | None:
         model_name = await self.model_repository.meta_for_api(model_id)
         if model_name:
             result_dto = [

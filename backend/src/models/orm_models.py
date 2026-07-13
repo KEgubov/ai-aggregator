@@ -158,7 +158,7 @@ class Chat(Base):
     name: Mapped[str_255] = mapped_column(nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
-    ai_models: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    ai_models: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String), default=list)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )

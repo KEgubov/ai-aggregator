@@ -6,7 +6,7 @@ from backend.src.api.dependency import get_model_service, get_current_user
 from backend.src.schemas.custom import CurrentUserDTO
 from backend.src.service.model_service import ModelService
 
-router = APIRouter(prefix="/models", tags=["models"])
+router = APIRouter(prefix="/model", tags=["Model"])
 
 @router.get("/list")
 async def get_model_list(

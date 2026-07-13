@@ -9,7 +9,7 @@ from backend.src.service.model_orchestrator import AIOrchestrator
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/message", tags=["chat"])
+router = APIRouter(prefix="/message", tags=["Message"])
 
 
 @router.get("/send")
