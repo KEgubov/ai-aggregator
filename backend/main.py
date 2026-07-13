@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+from authx import AuthX
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,18 +9,47 @@ from backend.src.api import main_router
 from backend.src.api.exception_handler import duplicate_error_handler
 from backend.src.clients.gemini_client import GeminiClient
 from backend.src.clients.groq_client import GroqClient
+from backend.src.configs.auth_config import authx_settings
 from backend.src.core.logger import setup_logging
+from backend.src.repository.auth_repository import AuthRepository
+from backend.src.repository.models_repository import ModelRepository
+from backend.src.repository.user_repository import UserRepository
+from backend.src.service.auth_service import AuthService
 from backend.src.service.exceptions import DuplicateError
+from backend.src.service.model_service import ModelService
+from backend.src.service.user_service import UserService
 
 setup_logging("AI Agregator")
 
 logger = logging.getLogger("app")
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Initializing HTTP clients...")
+async def init_security(app: FastAPI):
+    """Инициализация безопасности"""
+    app.state.security = AuthX(config=authx_settings.config)
+
+async def init_services(app: FastAPI):
+    """Инициализация бизнес-сервисов"""
+    app.state.auth_service = AuthService(
+        auth_repository=AuthRepository(),
+    )
+    app.state.user_service = UserService(
+        user_repository=UserRepository(),
+    )
+    app.state.model_service = ModelService(
+        model_repository=ModelRepository(),
+    )
+
+async def init_clients(app: FastAPI):
+    """Инициализация внешних клиентов"""
     app.state.gemini_client = GeminiClient()
     app.state.groq_client = GroqClient()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_security(app)
+    await init_services(app)
+    await init_clients(app)
 
     yield
 

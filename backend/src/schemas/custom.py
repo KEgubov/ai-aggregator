@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 
 class AIModelNameDTO(BaseModel):
@@ -12,3 +12,13 @@ class AIModelMetaDTO(BaseModel):
 class ModelProviderResponse(BaseModel):
     model_name: str
     provider_name: str
+
+class LoginData(BaseModel):
+    email: EmailStr
+    password: str
+
+class CurrentUserDTO(BaseModel):
+    user_id: int
+
+class UserIDDTO(BaseModel):
+    user_id: int

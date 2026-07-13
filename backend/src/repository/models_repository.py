@@ -1,4 +1,6 @@
-from sqlalchemy import select, update, func
+import asyncio
+
+from sqlalchemy import select, update, func, Row
 from sqlalchemy.dialects.mysql import insert
 
 from backend.src.core.database import async_session
@@ -18,7 +20,7 @@ class ModelRepository:
             return result.all() if result else None
 
     @staticmethod
-    async def meta_for_api(model_id: int) -> list[tuple[str]]:
+    async def meta_for_api(model_id: int) -> Row[tuple[str, str]]:
         async with async_session() as session:
             stmt = (
                 select(AIModel.model_name, AIProviders.provider_name)
@@ -29,7 +31,7 @@ class ModelRepository:
                 .where(AIModel.model_id == model_id)
             )
             result = await session.execute(stmt)
-            return result.all() if result else None
+            return result.first() if result else None
 
     @staticmethod
     async def save_model_for_the_chat(model_id: int):

@@ -1,13 +1,18 @@
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
-from backend.src.service.model_service import model_service
+from backend.src.api.dependency import get_model_service, get_current_user
+from backend.src.schemas.custom import CurrentUserDTO
+from backend.src.service.model_service import ModelService
 
 router = APIRouter(prefix="/models", tags=["models"])
 
 @router.get("/list")
-async def get_model_list() -> dict[str, str | Any]:
+async def get_model_list(
+    model_service: ModelService = Depends(get_model_service),
+    current_user: CurrentUserDTO = Depends(get_current_user),
+) -> dict[str, str | Any]:
     models = await model_service.list_model_validate()
     if not models:
         raise HTTPException(status_code=404, detail="No models found")

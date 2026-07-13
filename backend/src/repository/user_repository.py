@@ -1,3 +1,4 @@
+from sqlalchemy import Row, select
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
@@ -21,3 +22,13 @@ class UserRepository:
                         message="User already exists",
                         error_code="USER_DUPLICATE",
                     )
+
+    @staticmethod
+    async def get_current_user_by_id(user_id: int) -> User:
+        async with async_session() as session:
+            query = (
+                select(User)
+                .where(User.user_id == user_id)
+            )
+            result = await session.execute(query)
+            return result.scalar() if result else None

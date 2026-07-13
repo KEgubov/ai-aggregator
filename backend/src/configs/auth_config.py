@@ -1,17 +1,28 @@
-import os
 from datetime import timedelta
 
-from authx import AuthXConfig, AuthX
-from dotenv import load_dotenv
+from authx import AuthXConfig
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv()
+from pathlib import Path
 
-config  = AuthXConfig(
-    JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY"),
-    JWT_ACCESS_COOKIE_NAME=os.getenv("JWT_ACCESS_COOKIE_NAME"),
-    JWT_COOKIE_CSRF_PROTECT=False,
-    JWT_TOKEN_LOCATION=["cookies"],
-    JWT_ACCESS_TOKEN_EXPIRES=timedelta(minutes=30),
-)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
-security = AuthX(config=config)
+
+class AuthXSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore")
+
+    JWT_SECRET_KEY: str
+    JWT_ACCESS_COOKIE_NAME: str
+
+    @property
+    def config(self) -> AuthXConfig:
+        return AuthXConfig(
+            JWT_SECRET_KEY=self.JWT_SECRET_KEY,
+            JWT_ACCESS_COOKIE_NAME=self.JWT_ACCESS_COOKIE_NAME,
+            JWT_COOKIE_CSRF_PROTECT=False,
+            JWT_TOKEN_LOCATION=["cookies"],
+            JWT_ACCESS_TOKEN_EXPIRES=timedelta(hours=24),
+        )
+
+
+authx_settings = AuthXSettings()
