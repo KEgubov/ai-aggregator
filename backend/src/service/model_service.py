@@ -25,8 +25,9 @@ class ModelService:
             return result_dto
         return None
 
-    async def link_model(self, model_id: int):
-        response = await self.model_repository.save_model_for_the_chat(model_id)
-        if not response:
-            return None
-        return True
+    async def link_model(
+        self, chat_id: int, model_id: int, owner_id: int
+    ) -> bool:
+        return await self.model_repository.save_model_for_the_chat(
+            chat_id, model_id, owner_id
+        )

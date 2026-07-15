@@ -12,11 +12,12 @@ class AIOrchestrator:
     async def orchestrate_generation(
         self, model_id: int, text: str
     ) -> AsyncGenerator[Any, Any]:
-        meta = await self.model_service.get_meta_for_api(model_id)
+        meta_list = await self.model_service.get_meta_for_api(model_id)
 
-        if not meta:
+        if not meta_list:
             raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
+        meta = meta_list[0]
         provider_name = meta.provider_name
         model_name = meta.model_name
 

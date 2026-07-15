@@ -6,7 +6,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/models': 'http://127.0.0.1:8000',
+      '/user': 'http://127.0.0.1:8000',
+      '/chat': 'http://127.0.0.1:8000',
+      '/model': 'http://127.0.0.1:8000',
       '/message': 'http://127.0.0.1:8000',
     },
   },

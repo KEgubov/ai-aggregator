@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.src.api.dependency import get_current_user, get_chat_service
 from backend.src.schemas.chat_schema import ChatAddDTO
@@ -14,3 +14,13 @@ async def create_chat(
 ):
     chat_add = await chat_service.validate_create_chat(chat, owner_id=current_user.user_id)
     return {"status": "ok", "chat": chat_add}
+
+@router.get("/all")
+async def get_chats(
+    chat_service = Depends(get_chat_service),
+    current_user = Depends(get_current_user)
+):
+    chats = await chat_service.validate_personal_chats_from_user(user_id=current_user.user_id)
+    if not chats:
+        return {"status": "ok", "chats": []}
+    return {"status": "ok", "chats": chats}

@@ -18,5 +18,12 @@ class ChatService:
             return result_dto
         return None
 
-
-
+    async def validate_personal_chats_from_user(self, user_id: int) -> list[ChatDTO] | None:
+        personal_chats = await self.chat_repository.get_personal_chats_from_user(user_id)
+        if personal_chats:
+            result_dtos = [
+                ChatDTO.model_validate(row, from_attributes=True)
+                for row in personal_chats
+            ]
+            return result_dtos
+        return None

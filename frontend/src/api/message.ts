@@ -1,14 +1,18 @@
 export async function streamMessage(
+  chatId: number,
   modelId: number,
   text: string,
   onChunk: (chunk: string) => void,
 ): Promise<void> {
   const params = new URLSearchParams({
+    chat_id: String(chatId),
     model_id: String(modelId),
     text,
   });
 
-  const res = await fetch(`/message/send?${params.toString()}`);
+  const res = await fetch(`/message/send?${params.toString()}`, {
+    credentials: 'include',
+  });
   if (!res.ok) {
     const raw = await res.text().catch(() => '');
     let detail = raw;

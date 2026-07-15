@@ -4,7 +4,6 @@ from backend.src.api.send_message import router as send_message_router
 from backend.src.api.models_info import router as models_info
 from backend.src.api.chat import router as chat_router
 from backend.src.api.registration import router as registration_router
-from backend.src.api.chat import router as chat_router
 
 main_router = APIRouter()
 

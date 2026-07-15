@@ -410,7 +410,7 @@ class ChatMessage(Base):
     ai_model: Mapped[Optional[str_100]]
     ai_provider: Mapped[Optional[str_20]]
 
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[Optional[str]] = mapped_column(Text)
     content_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
     message_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     position: Mapped[int] = mapped_column(default=0)

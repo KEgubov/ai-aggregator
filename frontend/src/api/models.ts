@@ -10,7 +10,9 @@ interface ModelsListResponse {
 }
 
 export async function fetchModels(): Promise<ApiModel[]> {
-  const res = await fetch('/models/list');
+  const res = await fetch('/model/list', {
+    credentials: 'include',
+  });
   if (!res.ok) {
     let detail = `Failed to load models: ${res.status}`;
     try {

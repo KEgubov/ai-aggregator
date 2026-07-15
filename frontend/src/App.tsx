@@ -1,163 +1,106 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
-import ChatInput from './components/ChatInput';
-import ChatThreading from './components/ChatThreading.jsx';
-import { fetchModels, findModelByName, type ApiModel } from './api/models';
-import { streamMessage } from './api/message';
-import { createId, type Message } from './types/message';
+import { useCallback, useEffect, useState } from 'react';
+import AuthForm from './components/AuthForm';
+import ChatHome from './components/ChatHome';
+import ChatView from './components/ChatView';
+import { fetchChats } from './api/chat';
+import { ApiError } from './api/client';
+import type { Chat } from './types/chat';
 
-const MODEL_ICONS: LucideIcon[] = [Sparkles, Zap, Gem, Brain, Rocket, Satellite];
+type AppView = 'loading' | 'auth' | 'chats' | 'conversation';
 
-function mapApiModelToInput(model: ApiModel, index: number) {
-  return {
-    id: String(model.model_id),
-    name: model.display_name,
-    desc: model.description,
-    count: 0,
-    Icon: MODEL_ICONS[index % MODEL_ICONS.length],
-  };
-}
-
-function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiModel[] {
-  if (modelTokens.length > 0) {
-    return modelTokens
-      .map((name) => findModelByName(apiModels, name))
-      .filter((m): m is ApiModel => Boolean(m));
-  }
-  return apiModels.length > 0 ? [apiModels[0]] : [];
-}
+const LOGOUT_FLAG = 'agregation_logged_out';
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [apiModels, setApiModels] = useState<ApiModel[]>([]);
-  const [modelsError, setModelsError] = useState<string | null>(null);
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [view, setView] = useState<AppView>('loading');
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChat, setActiveChat] = useState<Chat | null>(null);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
 
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const modelsLoadedRef = useRef(false);
-
-  const inputModels = useMemo(
-    () => apiModels.map((model, index) => mapApiModelToInput(model, index)),
-    [apiModels],
-  );
-
-  const loadModels = useCallback(async (): Promise<ApiModel[]> => {
-    if (isLoadingModels) return apiModels;
-    setIsLoadingModels(true);
-    setModelsError(null);
+  const loadChats = useCallback(async (): Promise<boolean> => {
+    setIsLoadingChats(true);
     try {
-      const models = await fetchModels();
-      setApiModels(models);
-      modelsLoadedRef.current = true;
-      return models;
+      const list = await fetchChats();
+      setChats(list);
+      return true;
     } catch (err) {
-      setModelsError(err instanceof Error ? err.message : 'Не удалось загрузить модели');
-      return [];
+      if (err instanceof ApiError && err.status === 401) {
+        return false;
+      }
+      setChats([]);
+      return true;
     } finally {
-      setIsLoadingModels(false);
+      setIsLoadingChats(false);
     }
-  }, [apiModels, isLoadingModels]);
-
-  const handleMentionOpen = useCallback(() => {
-    if (!modelsLoadedRef.current && !isLoadingModels) {
-      void loadModels();
-    }
-  }, [isLoadingModels, loadModels]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const updateAssistantMessage = useCallback((id: string, patch: Partial<Message>) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
   }, []);
 
-  const runGeneration = useCallback(
-    async (model: ApiModel, prompt: string, assistantId: string) => {
-      try {
-        await streamMessage(model.model_id, prompt, (chunk) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, text: m.text + chunk, isStreaming: true } : m,
-            ),
-          );
-        });
-        updateAssistantMessage(assistantId, { isStreaming: false });
-      } catch (err) {
-        const errorText = err instanceof Error ? err.message : 'Ошибка генерации';
-        updateAssistantMessage(assistantId, {
-          text: `⚠ ${errorText}`,
-          isStreaming: false,
-        });
-      }
-    },
-    [updateAssistantMessage],
-  );
+  const bootstrap = useCallback(async () => {
+    if (sessionStorage.getItem(LOGOUT_FLAG)) {
+      setView('auth');
+      return;
+    }
+    const isAuthenticated = await loadChats();
+    setView(isAuthenticated ? 'chats' : 'auth');
+  }, [loadChats]);
 
-  const handleSend = useCallback(
-    async (payload: { text: string; modelTokens: string[]; memberTokens: string[] }) => {
-      const text = payload.text.trim();
-      if (!text) return;
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
 
-      let currentModels = apiModels;
-      if (currentModels.length === 0) {
-        currentModels = await loadModels();
-      }
+  const handleAuthSuccess = useCallback(async () => {
+    sessionStorage.removeItem(LOGOUT_FLAG);
+    await loadChats();
+    setView('chats');
+  }, [loadChats]);
 
-      const targets = resolveTargetModels(currentModels, payload.modelTokens);
-      if (targets.length === 0) {
-        setModelsError('Нет доступных моделей. Запустите бэкенд и проверьте /models/list.');
-        return;
-      }
+  const handleLogout = useCallback(() => {
+    sessionStorage.setItem(LOGOUT_FLAG, '1');
+    setChats([]);
+    setActiveChat(null);
+    setView('auth');
+  }, []);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          type: 'user',
-          text,
-          isMe: true,
-        },
-      ]);
+  const handleSelectChat = useCallback((chat: Chat) => {
+    setActiveChat(chat);
+    setView('conversation');
+  }, []);
 
-      for (const model of targets) {
-        const assistantId = createId();
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: assistantId,
-            type: 'ai',
-            text: '',
-            modelName: model.display_name,
-            isStreaming: true,
-          },
-        ]);
-        await runGeneration(model, text, assistantId);
-      }
-    },
-    [apiModels, loadModels, runGeneration],
-  );
+  const handleChatCreated = useCallback((chat: Chat) => {
+    setChats((prev) => [chat, ...prev]);
+    setActiveChat(chat);
+    setView('conversation');
+  }, []);
+
+  const handleBackToChats = useCallback(() => {
+    setActiveChat(null);
+    setView('chats');
+  }, []);
+
+  if (view === 'loading') {
+    return (
+      <div className="w-full min-h-screen bg-black text-white flex items-center justify-center">
+        <p className="text-sm" style={{ color: '#949494' }}>
+          Загрузка…
+        </p>
+      </div>
+    );
+  }
+
+  if (view === 'auth') {
+    return <AuthForm onSuccess={handleAuthSuccess} />;
+  }
+
+  if (view === 'conversation' && activeChat) {
+    return <ChatView chat={activeChat} onBack={handleBackToChats} />;
+  }
 
   return (
-    <div className="w-full min-h-screen bg-black text-white flex flex-col">
-      <div className="flex-1 overflow-y-auto p-6">
-        <ChatThreading messages={messages} />
-        <div ref={bottomRef} aria-hidden="true" className="h-px" />
-      </div>
-
-      <div className="shrink-0 px-6 pb-8 pt-2">
-        {(modelsError || isLoadingModels) && (
-          <p className="text-center text-xs mb-3" style={{ color: modelsError ? '#f87171' : '#949494' }}>
-            {modelsError ?? 'Загрузка моделей…'}
-          </p>
-        )}
-        <ChatInput
-          aiModels={inputModels}
-          onMentionOpen={handleMentionOpen}
-          onSend={handleSend}
-          placeholder="Напишите сообщение или введите @ для выбора модели…"
-        />
-      </div>
-    </div>
+    <ChatHome
+      chats={chats}
+      isLoading={isLoadingChats}
+      onSelectChat={handleSelectChat}
+      onChatCreated={handleChatCreated}
+      onLogout={handleLogout}
+      onRefresh={() => void loadChats()}
+    />
   );
 }

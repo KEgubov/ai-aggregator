@@ -1,7 +1,4 @@
-import asyncio
-
 from sqlalchemy import select, update, func, Row
-from sqlalchemy.dialects.mysql import insert
 
 from backend.src.core.database import async_session
 from backend.src.models.orm_models import AIModel, Chat, AIProviders, \
@@ -34,25 +31,41 @@ class ModelRepository:
             return result.first() if result else None
 
     @staticmethod
-    async def save_model_for_the_chat(model_id: int):
+    async def save_model_for_the_chat(
+        chat_id: int, model_id: int, owner_id: int
+    ) -> bool:
         async with async_session() as session:
             query = (
                 select(AIModel.display_name)
                 .where(AIModel.model_id == model_id)
             )
-            result= await session.execute(query)
+            result = await session.execute(query)
             display_name = result.scalar_one_or_none()
 
             if not display_name:
                 raise ValueError(f"Модель с ID {model_id} не найдена")
 
+            chat_query = (
+                select(Chat)
+                .where(Chat.chat_id == chat_id, Chat.owner_id == owner_id)
+            )
+            chat_result = await session.execute(chat_query)
+            chat = chat_result.scalar_one_or_none()
+            if not chat:
+                return False
+
+            current_models = list(chat.ai_models or [])
+            if display_name in current_models:
+                return True
+
             stmt = (
-                insert(Chat).values(
-                    ai_models=[display_name]
-                )
+                update(Chat)
+                .where(Chat.chat_id == chat_id)
+                .values(ai_models=current_models + [display_name])
             )
             await session.execute(stmt)
             await session.commit()
+            return True
 
 
     @staticmethod
@@ -75,5 +88,3 @@ class ModelRepository:
 
             await session.execute(stmt)
             await session.commit()
-
-model_repository = ModelRepository()
