@@ -168,6 +168,7 @@ const CHAT_INPUT_STYLES = `
   background: #FF9D00; color: #191919; font-size: 10px; line-height: 1; opacity: 0;
   transition: opacity .1s ease;
 }
+.cip-token-icon-remove::before { content: '✕'; }
 .cip-token-icon:hover .cip-token-icon-remove { opacity: 1; }
 .cip-token-name { color: #FFBC50; cursor: pointer; }
 
@@ -280,7 +281,26 @@ function placeCaretAtTextEnd(node: Text) {
 }
 
 function isRootEmpty(root: HTMLElement): boolean {
-  return (root.textContent || '').trim().length === 0;
+  const hasText = extractEditableText(root).trim().length > 0;
+  const hasTokens = root.querySelector('[data-token]') !== null;
+  return !hasText && !hasTokens;
+}
+
+/** Текст сообщения без UI-элементов тегов (@модель): иконка ✕ и имя тега не попадают в payload. */
+function extractEditableText(root: HTMLElement): string {
+  let text = '';
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent ?? '';
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as HTMLElement;
+    if (el.dataset.token) return;
+    for (const child of el.childNodes) walk(child);
+  };
+  for (const child of root.childNodes) walk(child);
+  return text;
 }
 
 /** Снимает жёлтую "живую" подсветку "@query" и возвращает НОВЫЙ текстовый узел (без обращения к Selection). */
@@ -340,7 +360,7 @@ function buildBadgeElement(item: FlatItem): HTMLElement {
   iconRemove.setAttribute('data-action', 'remove');
   iconRemove.setAttribute('aria-label', 'Удалить тег');
   iconRemove.className = 'cip-token-icon-remove';
-  iconRemove.textContent = '✕';
+  iconRemove.setAttribute('aria-hidden', 'true');
 
   iconZone.append(iconDefault, iconRemove);
 
@@ -737,6 +757,25 @@ function ChatInput({
     measureMultiline();
   }, [closeMenu, insertOrReplaceToken, showMenu, syncFromDom, measureMultiline, detectAndOpenMention, aiModels, teamMembers]);
 
+  const handleSend = useCallback(() => {
+    const root = inputRef.current;
+    if (!root) return;
+    cleanupDom(root);
+    while (root.querySelector('.cip-mention-live')) {
+      unwrapMentionLiveNode(root);
+    }
+    const text = extractEditableText(root);
+    onSend?.({ text, modelTokens: modelTokenNames, memberTokens: memberTokenNames });
+    root.innerHTML = '';
+    setIsEmpty(true);
+    setIsMultiline(false);
+    setModelTokenNames([]);
+    setMemberTokenNames([]);
+    setMentionActive(false);
+    closeMenu();
+    root.blur();
+  }, [onSend, modelTokenNames, memberTokenNames, closeMenu]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key === 'Backspace') {
@@ -744,27 +783,33 @@ function ChatInput({
         if (handled) return;
       }
 
-      if (!showMenu) return;
+      if (showMenu) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setHighlightedIndex((i) => Math.min(i + 1, Math.max(flat.length - 1, 0)));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setHighlightedIndex((i) => Math.max(i - 1, 0));
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          const item = flat[highlightedIndex];
+          if (item) insertOrReplaceToken(item);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          const root = inputRef.current;
+          if (root && mentionRef.current.mode === 'range') unwrapMentionLiveNode(root);
+          setMentionActive(false);
+          closeMenu();
+        }
+        return;
+      }
 
-      if (e.key === 'ArrowDown') {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        setHighlightedIndex((i) => Math.min(i + 1, Math.max(flat.length - 1, 0)));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setHighlightedIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const item = flat[highlightedIndex];
-        if (item) insertOrReplaceToken(item);
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        const root = inputRef.current;
-        if (root && mentionRef.current.mode === 'range') unwrapMentionLiveNode(root);
-        setMentionActive(false);
-        closeMenu();
+        if (!isEmpty) handleSend();
       }
     },
-    [showMenu, flat, highlightedIndex, insertOrReplaceToken, closeMenu, handleBackspace]
+    [showMenu, flat, highlightedIndex, insertOrReplaceToken, closeMenu, handleBackspace, isEmpty, handleSend]
   );
 
   const handleFocus = useCallback(() => {
@@ -784,20 +829,6 @@ function ChatInput({
       measureMultiline();
     }, 120);
   }, [closeMenu, syncFromDom, measureMultiline]);
-
-  const handleSend = useCallback(() => {
-    const root = inputRef.current;
-    if (!root) return;
-    onSend?.({ text: root.textContent || '', modelTokens: modelTokenNames, memberTokens: memberTokenNames });
-    root.innerHTML = '';
-    setIsEmpty(true);
-    setIsMultiline(false);
-    setModelTokenNames([]);
-    setMemberTokenNames([]);
-    setMentionActive(false);
-    closeMenu();
-    root.blur();
-  }, [onSend, modelTokenNames, memberTokenNames, closeMenu]);
 
   // ── Логика текста кнопки отправки по количеству ИИ-тегов в инпуте ──────────
   const sendConfig: SendConfig = useMemo(() => {

@@ -32,3 +32,9 @@ async def login(
     token = security.create_access_token(uid=str(user.user_id))
     response.set_cookie(security.config.JWT_ACCESS_COOKIE_NAME, token)
     return {"access_token": token}
+
+
+@router.post("/logout")
+async def logout(response: Response, security: AuthX = Depends(get_security)):
+    security.unset_cookies(response)
+    return {"status": "ok"}

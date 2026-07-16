@@ -21,7 +21,7 @@ from backend.src.service.exceptions import DuplicateError
 from backend.src.service.model_service import ModelService
 from backend.src.service.user_service import UserService
 
-setup_logging("AI Agregator")
+setup_logging("AI Aggregator")
 
 logger = logging.getLogger("app")
 
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AI Agregator", lifespan=lifespan)
+app = FastAPI(title="AI Aggregator", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

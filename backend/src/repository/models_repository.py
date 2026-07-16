@@ -66,25 +66,3 @@ class ModelRepository:
             await session.execute(stmt)
             await session.commit()
             return True
-
-
-    @staticmethod
-    async def delete_model_from_the_chat(model_id: int):
-        async with async_session() as session:
-            query = select(AIModel.display_name).where(
-                AIModel.model_id == model_id)
-            result = await session.execute(query)
-            display_name = result.scalar_one_or_none()
-
-            if display_name is None:
-                raise ValueError(f"Модель с ID {model_id} не найдена")
-
-            stmt = (
-                update(Chat)
-                .values(
-                    ai_models=func.array_remove(Chat.ai_models, display_name))
-                .where(Chat.ai_models.any(display_name))
-            )
-
-            await session.execute(stmt)
-            await session.commit()

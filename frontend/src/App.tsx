@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import AuthForm from './components/AuthForm';
 import ChatHome from './components/ChatHome';
 import ChatView from './components/ChatView';
+import { logoutUser } from './api/auth';
 import { fetchChats } from './api/chat';
 import { ApiError } from './api/client';
 import type { Chat } from './types/chat';
@@ -52,7 +53,12 @@ export default function App() {
     setView('chats');
   }, [loadChats]);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutUser();
+    } catch {
+      // Сбрасываем UI даже при ошибке сети
+    }
     sessionStorage.setItem(LOGOUT_FLAG, '1');
     setChats([]);
     setActiveChat(null);
