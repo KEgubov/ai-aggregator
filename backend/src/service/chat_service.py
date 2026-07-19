@@ -27,3 +27,9 @@ class ChatService:
             ]
             return result_dtos
         return None
+
+    async def response_delete_chat(self, chat_id: int, user_id: int) -> bool:
+        response = await self.chat_repository.delete_chat_in_db(chat_id, user_id)
+        if not response:
+            return False
+        return True

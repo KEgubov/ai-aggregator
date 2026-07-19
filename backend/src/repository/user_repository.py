@@ -9,7 +9,7 @@ from backend.src.service.exceptions import DuplicateError
 class UserRepository:
 
     @staticmethod
-    async def create_user_in_db(user: User):
+    async def create_user_in_db(user: User) -> User | None:
         async with async_session() as session:
             try:
                 session.add(user)

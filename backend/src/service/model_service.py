@@ -1,5 +1,8 @@
+import logging
 from backend.src.schemas.custom import AIModelMetaDTO, ModelProviderResponse
+from backend.src.schemas.message_schema import MessageAddDTO
 
+logger = logging.getLogger("app")
 
 class ModelService:
     def __init__(self, model_repository):
@@ -28,6 +31,10 @@ class ModelService:
     async def link_model(
         self, chat_id: int, model_id: int, owner_id: int
     ) -> bool:
-        return await self.model_repository.save_model_for_the_chat(
+        linked_model = await self.model_repository.save_model_for_the_chat(
             chat_id, model_id, owner_id
         )
+        if not linked_model:
+            logger.warning(f"Model with id {model_id} not linked")
+            return False
+        return True

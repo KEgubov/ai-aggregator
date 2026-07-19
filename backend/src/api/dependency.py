@@ -4,6 +4,7 @@ from fastapi import Request, Depends, HTTPException
 from backend.src.schemas.custom import CurrentUserDTO
 from backend.src.service.auth_service import AuthService
 from backend.src.service.chat_service import ChatService
+from backend.src.service.message_service import MessageService
 from backend.src.service.model_orchestrator import AIOrchestrator
 from backend.src.service.model_service import ModelService
 from backend.src.service.user_service import UserService
@@ -35,6 +36,9 @@ def get_model_service(request: Request) -> ModelService:
 
 def get_chat_service(request: Request) -> ChatService:
     return request.app.state.chat_service
+
+def get_message_service(request: Request) -> MessageService:
+    return request.app.state.message_service
 
 async def get_current_user(
     payload: TokenPayload = Depends(get_token_payload),

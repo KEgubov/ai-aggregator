@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react';
-import { Loader2, LogOut, MessageSquarePlus, MessagesSquare } from 'lucide-react';
-import { createChat } from '../api/chat';
+import { useState, type FormEvent, type MouseEvent } from 'react';
+import { Loader2, LogOut, MessageSquarePlus, MessagesSquare, Trash2 } from 'lucide-react';
+import { createChat, deleteChat } from '../api/chat';
 import { ApiError } from '../api/client';
+import ConfirmDialog from './ConfirmDialog';
 import type { Chat } from '../types/chat';
 
 const COLORS = {
@@ -20,6 +21,7 @@ interface ChatHomeProps {
   isLoading: boolean;
   onSelectChat: (chat: Chat) => void;
   onChatCreated: (chat: Chat) => void;
+  onChatDeleted: (chatId: number) => void;
   onLogout: () => void;
   onRefresh: () => void;
 }
@@ -29,6 +31,7 @@ export default function ChatHome({
   isLoading,
   onSelectChat,
   onChatCreated,
+  onChatDeleted,
   onLogout,
   onRefresh,
 }: ChatHomeProps) {
@@ -37,6 +40,8 @@ export default function ChatHome({
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingChatId, setDeletingChatId] = useState<number | null>(null);
+  const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -62,6 +67,32 @@ export default function ChatHome({
       }
     } finally {
       setIsCreating(false);
+    }
+  }
+
+  function handleDeleteClick(chat: Chat, event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    setError(null);
+    setChatToDelete(chat);
+  }
+
+  async function confirmDelete() {
+    if (!chatToDelete) return;
+
+    setError(null);
+    setDeletingChatId(chatToDelete.chat_id);
+    try {
+      await deleteChat(chatToDelete.chat_id);
+      onChatDeleted(chatToDelete.chat_id);
+      setChatToDelete(null);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : 'Не удалось удалить чат');
+      }
+    } finally {
+      setDeletingChatId(null);
     }
   }
 
@@ -220,38 +251,70 @@ export default function ChatHome({
           ) : (
             <div className="space-y-3">
               {chats.map((chat) => (
-                <button
+                <div
                   key={chat.chat_id}
-                  type="button"
-                  onClick={() => onSelectChat(chat)}
-                  className="w-full rounded-2xl p-4 flex items-start gap-3 text-left transition-colors"
+                  className="relative w-full rounded-2xl flex items-start gap-3 text-left transition-colors"
                   style={{ background: COLORS.card, border: `1px solid ${COLORS.border}` }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = COLORS.accent;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = COLORS.border;
-                  }}
                 >
-                  <span
-                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: '#1f1f1f', color: COLORS.accent }}
+                  <button
+                    type="button"
+                    onClick={() => onSelectChat(chat)}
+                    className="flex-1 min-w-0 p-4 flex items-start gap-3 text-left rounded-2xl"
+                    onMouseEnter={(e) => {
+                      e.currentTarget.parentElement!.style.borderColor = COLORS.accent;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.parentElement!.style.borderColor = COLORS.border;
+                    }}
                   >
-                    <MessagesSquare className="w-5 h-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium truncate" style={{ color: COLORS.text }}>
-                      {chat.name}
+                    <span
+                      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                      style={{ background: '#1f1f1f', color: COLORS.accent }}
+                    >
+                      <MessagesSquare className="w-5 h-5" />
                     </span>
-                    {chat.description && (
-                      <span className="block text-xs mt-1 truncate" style={{ color: COLORS.muted }}>
-                        {chat.description}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium truncate" style={{ color: COLORS.text }}>
+                        {chat.name}
                       </span>
+                      {chat.description && (
+                        <span className="block text-xs mt-1 truncate" style={{ color: COLORS.muted }}>
+                          {chat.description}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => handleDeleteClick(chat, event)}
+                    disabled={deletingChatId === chat.chat_id}
+                    className="shrink-0 m-3 p-2 rounded-xl transition-colors disabled:opacity-50"
+                    style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = COLORS.error;
+                      e.currentTarget.style.borderColor = COLORS.error;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = COLORS.muted;
+                      e.currentTarget.style.borderColor = COLORS.border;
+                    }}
+                    aria-label={`Удалить чат ${chat.name}`}
+                  >
+                    {deletingChatId === chat.chat_id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
                     )}
-                  </span>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
+          )}
+
+          {error && !showCreate && (
+            <p className="text-sm text-center" style={{ color: COLORS.error }}>
+              {error}
+            </p>
           )}
 
           {!isLoading && chats.length > 0 && (
@@ -266,6 +329,26 @@ export default function ChatHome({
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={chatToDelete !== null}
+        title="Удалить чат?"
+        description={
+          chatToDelete
+            ? `Чат «${chatToDelete.name}» и все сообщения в нём будут удалены без возможности восстановления.`
+            : ''
+        }
+        confirmLabel="Удалить"
+        cancelLabel="Отмена"
+        variant="danger"
+        isLoading={deletingChatId !== null}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (deletingChatId === null) {
+            setChatToDelete(null);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -28,3 +28,13 @@ export async function createChat(payload: CreateChatPayload): Promise<Chat> {
   });
   return data.chat;
 }
+
+interface DeleteChatResponse {
+  status: string;
+}
+
+export async function deleteChat(chatId: number): Promise<void> {
+  await apiFetch<DeleteChatResponse>(`/chat/${chatId}`, {
+    method: 'DELETE',
+  });
+}

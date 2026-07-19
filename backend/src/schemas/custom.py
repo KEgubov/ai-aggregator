@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field, EmailStr
 
+from backend.src.schemas.message_schema import MessageDTO
+
 
 class AIModelNameDTO(BaseModel):
     model_name: str = Field(max_length=100, description='Model name for API')
@@ -22,3 +24,6 @@ class CurrentUserDTO(BaseModel):
 
 class UserIDDTO(BaseModel):
     user_id: int
+
+class MessageListResponse(BaseModel):
+    messages: list[MessageDTO]

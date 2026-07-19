@@ -399,7 +399,7 @@ class ChatMessage(Base):
         ForeignKey("chat_messages.message_id")
     )
 
-    path: Mapped[str] = mapped_column(LtreeType, nullable=False)
+    path: Mapped[Optional[str]] = mapped_column(LtreeType)
 
     context_anchor: Mapped[Optional[str]] = mapped_column(Text)
     context_text_snippet: Mapped[Optional[str]] = mapped_column(Text)
@@ -471,7 +471,7 @@ class ProjectChatMessage(Base):
         ForeignKey("project_chat_messages.message_id")
     )
 
-    path: Mapped[str] = mapped_column(LtreeType, nullable=False)
+    path: Mapped[Optional[str]] = mapped_column(LtreeType)
 
     context_anchor: Mapped[Optional[str]] = mapped_column(Text)
     context_text_snippet: Mapped[Optional[str]] = mapped_column(Text)

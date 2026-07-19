@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
@@ -32,3 +32,16 @@ class ChatRepository:
             )
             personal_chats = await session.execute(query)
             return personal_chats.scalars().all() if personal_chats else None
+
+    @staticmethod
+    async def delete_chat_in_db(chat_id: int, user_id: int) -> bool:
+        async with async_session() as session:
+            chat = await session.scalar(
+                select(Chat).where(Chat.chat_id == chat_id,
+                                   Chat.owner_id == user_id)
+            )
+            if chat is None:
+                return False
+            await session.delete(chat)
+            await session.commit()
+            return True

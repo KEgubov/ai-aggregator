@@ -76,6 +76,14 @@ export default function App() {
     setView('conversation');
   }, []);
 
+  const handleChatDeleted = useCallback((chatId: number) => {
+    setChats((prev) => prev.filter((chat) => chat.chat_id !== chatId));
+    setActiveChat((prev) => (prev?.chat_id === chatId ? null : prev));
+    setView((currentView) =>
+      currentView === 'conversation' && activeChat?.chat_id === chatId ? 'chats' : currentView,
+    );
+  }, [activeChat]);
+
   const handleBackToChats = useCallback(() => {
     setActiveChat(null);
     setView('chats');
@@ -105,6 +113,7 @@ export default function App() {
       isLoading={isLoadingChats}
       onSelectChat={handleSelectChat}
       onChatCreated={handleChatCreated}
+      onChatDeleted={handleChatDeleted}
       onLogout={handleLogout}
       onRefresh={() => void loadChats()}
     />

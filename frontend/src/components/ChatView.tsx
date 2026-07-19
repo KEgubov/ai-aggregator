@@ -3,8 +3,8 @@ import { ArrowLeft, Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIco
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
 import { fetchModels, findModelByName, type ApiModel } from '../api/models';
-import { streamMessage } from '../api/message';
-import { createId, stripMentionTokens, type Message } from '../types/message';
+import { fetchMessages, streamMessage } from '../api/message';
+import { createId, mapMessageFromApi, stripMentionTokens, type Message } from '../types/message';
 import type { Chat } from '../types/chat';
 
 const MODEL_ICONS: LucideIcon[] = [Sparkles, Zap, Gem, Brain, Rocket, Satellite];
@@ -43,7 +43,9 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [apiModels, setApiModels] = useState<ApiModel[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const modelsLoadedRef = useRef(false);
@@ -77,6 +79,34 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
   }, [isLoadingModels, loadModels]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadMessages() {
+      setIsLoadingMessages(true);
+      setMessagesError(null);
+      try {
+        const apiMessages = await fetchMessages(chat.chat_id);
+        if (!cancelled) {
+          setMessages(apiMessages.map(mapMessageFromApi));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMessagesError(err instanceof Error ? err.message : 'Не удалось загрузить сообщения');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingMessages(false);
+        }
+      }
+    }
+
+    void loadMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [chat.chat_id]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -85,22 +115,43 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
   }, []);
 
   const runGeneration = useCallback(
-    async (model: ApiModel, prompt: string, assistantId: string) => {
+    async (model: ApiModel, prompt: string, assistantId: string): Promise<Message> => {
+      let assistantText = '';
       try {
-        await streamMessage(chat.chat_id, model.model_id, prompt, (chunk) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, text: m.text + chunk, isStreaming: true } : m,
-            ),
-          );
-        });
-        updateAssistantMessage(assistantId, { isStreaming: false });
+        await streamMessage(
+          {
+            chatId: chat.chat_id,
+            modelId: model.model_id,
+            content: prompt,
+          },
+          (chunk) => {
+            assistantText += chunk;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, text: assistantText, isStreaming: true } : m,
+              ),
+            );
+          },
+        );
+
+        return {
+          id: assistantId,
+          type: 'ai',
+          text: assistantText,
+          modelName: model.display_name,
+          isStreaming: false,
+        };
       } catch (err) {
         const errorText = err instanceof Error ? err.message : 'Ошибка генерации';
-        updateAssistantMessage(assistantId, {
+        const errorMessage: Message = {
+          id: assistantId,
+          type: 'ai',
           text: `⚠ ${errorText}`,
+          modelName: model.display_name,
           isStreaming: false,
-        });
+        };
+        updateAssistantMessage(assistantId, errorMessage);
+        return errorMessage;
       }
     },
     [chat.chat_id, updateAssistantMessage],
@@ -126,15 +177,7 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
         return;
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          type: 'user',
-          text,
-          isMe: true,
-        },
-      ]);
+      const assistantMessages: Message[] = [];
 
       for (const model of targets) {
         const assistantId = createId();
@@ -148,10 +191,17 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
             isStreaming: true,
           },
         ]);
-        await runGeneration(model, text, assistantId);
+        assistantMessages.push(await runGeneration(model, text, assistantId));
+      }
+
+      try {
+        const apiMessages = await fetchMessages(chat.chat_id);
+        setMessages([...apiMessages.map(mapMessageFromApi), ...assistantMessages]);
+      } catch (err) {
+        setMessagesError(err instanceof Error ? err.message : 'Не удалось обновить сообщения');
       }
     },
-    [apiModels, loadModels, runGeneration],
+    [apiModels, chat.chat_id, loadModels, runGeneration],
   );
 
   return (
@@ -190,6 +240,11 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
       </header>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {(messagesError || isLoadingMessages) && (
+          <p className="text-center text-xs mb-3" style={{ color: messagesError ? '#f87171' : COLORS.muted }}>
+            {messagesError ?? 'Загрузка сообщений…'}
+          </p>
+        )}
         <ChatThreading messages={messages} />
         <div ref={bottomRef} aria-hidden="true" className="h-px" />
       </div>
