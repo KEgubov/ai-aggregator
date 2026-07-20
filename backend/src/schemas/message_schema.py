@@ -13,7 +13,7 @@ class MessageAddDTO(BaseModel):
     context_text_snippet: Optional[str] = None
 
 class MessageSendDTO(MessageAddDTO):
-    model_id: int
+    model_id: Optional[int] = None
 
 class MessageDTO(MessageAddDTO):
     message_id: int

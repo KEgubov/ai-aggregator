@@ -6,13 +6,27 @@ interface MessagesResponse {
   messages: ApiMessage[];
 }
 
-export interface SendMessageOptions {
+export interface ChatMessageOptions {
   chatId: number;
-  modelId: number;
   content: string;
   parentId?: number;
   contextAnchor?: string;
   contextTextSnippet?: string;
+}
+
+export interface SendMessageOptions extends ChatMessageOptions {
+  modelId: number;
+}
+
+function buildMessageBody(options: ChatMessageOptions & { modelId?: number }) {
+  return {
+    chat_id: options.chatId,
+    content: options.content,
+    model_id: options.modelId ?? null,
+    parent_id: options.parentId ?? null,
+    context_anchor: options.contextAnchor ?? null,
+    context_text_snippet: options.contextTextSnippet ?? null,
+  };
 }
 
 export async function fetchMessages(chatId: number): Promise<ApiMessage[]> {
@@ -38,26 +52,32 @@ function parseErrorDetail(raw: string, status: number): string {
   return raw;
 }
 
-export async function streamMessage(
-  options: SendMessageOptions,
-  onChunk: (chunk: string) => void,
-): Promise<void> {
-  const body = {
-    chat_id: options.chatId,
-    model_id: options.modelId,
-    content: options.content,
-    parent_id: options.parentId ?? null,
-    context_anchor: options.contextAnchor ?? null,
-    context_text_snippet: options.contextTextSnippet ?? null,
-  };
-
+export async function sendChatMessage(options: ChatMessageOptions): Promise<void> {
   const res = await fetch('/message/send', {
     method: 'POST',
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildMessageBody(options)),
+  });
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '');
+    throw new Error(parseErrorDetail(raw, res.status));
+  }
+}
+
+export async function streamMessage(
+  options: SendMessageOptions,
+  onChunk: (chunk: string) => void,
+): Promise<void> {
+  const res = await fetch('/message/send', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildMessageBody(options)),
   });
   if (!res.ok) {
     const raw = await res.text().catch(() => '');
@@ -65,6 +85,11 @@ export async function streamMessage(
   }
   if (!res.body) {
     throw new Error('Streaming body is empty');
+  }
+
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    throw new Error('Expected streaming response from AI');
   }
 
   const reader = res.body.getReader();

@@ -3,7 +3,7 @@ import { ArrowLeft, Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIco
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
 import { fetchModels, findModelByName, type ApiModel } from '../api/models';
-import { fetchMessages, streamMessage } from '../api/message';
+import { fetchMessages, sendChatMessage, streamMessage } from '../api/message';
 import { createId, mapMessageFromApi, stripMentionTokens, type Message } from '../types/message';
 import type { Chat } from '../types/chat';
 
@@ -26,12 +26,12 @@ function mapApiModelToInput(model: ApiModel, index: number) {
 }
 
 function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiModel[] {
-  if (modelTokens.length > 0) {
-    return modelTokens
-      .map((name) => findModelByName(apiModels, name))
-      .filter((m): m is ApiModel => Boolean(m));
+  if (modelTokens.length === 0) {
+    return [];
   }
-  return apiModels.length > 0 ? [apiModels[0]] : [];
+  return modelTokens
+    .map((name) => findModelByName(apiModels, name))
+    .filter((m): m is ApiModel => Boolean(m));
 }
 
 interface ChatViewProps {
@@ -73,6 +73,7 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
   }, [apiModels, isLoadingModels]);
 
   const handleMentionOpen = useCallback(() => {
+    setModelsError(null);
     if (!modelsLoadedRef.current && !isLoadingModels) {
       void loadModels();
     }
@@ -171,11 +172,25 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
         currentModels = await loadModels();
       }
 
-      const targets = resolveTargetModels(currentModels, payload.modelTokens);
-      if (targets.length === 0) {
-        setModelsError('Нет доступных моделей. Запустите бэкенд и проверьте /model/list.');
+      if (payload.modelTokens.length === 0) {
+        setModelsError(null);
+        try {
+          await sendChatMessage({ chatId: chat.chat_id, content: text });
+          const apiMessages = await fetchMessages(chat.chat_id);
+          setMessages(apiMessages.map(mapMessageFromApi));
+        } catch (err) {
+          setMessagesError(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
+        }
         return;
       }
+
+      const targets = resolveTargetModels(currentModels, payload.modelTokens);
+      if (targets.length === 0) {
+        setModelsError('Выбранная модель не найдена. Проверьте список моделей.');
+        return;
+      }
+
+      setModelsError(null);
 
       const assistantMessages: Message[] = [];
 

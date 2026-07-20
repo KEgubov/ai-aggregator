@@ -1,12 +1,13 @@
 import logging
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from starlette.responses import StreamingResponse
 
 from backend.src.api.dependency import (
     get_ai_orchestrator,
     get_current_user,
-    get_model_service, get_message_service,
+    get_model_service,
+    get_message_service,
 )
 from backend.src.schemas.custom import CurrentUserDTO
 from backend.src.schemas.message_schema import MessageSendDTO
@@ -26,13 +27,21 @@ async def stream_message(
     model_service: ModelService = Depends(get_model_service),
     message_service: MessageService = Depends(get_message_service),
     current_user: CurrentUserDTO = Depends(get_current_user),
-) -> StreamingResponse:
-    await model_service.link_model(payload.chat_id, payload.model_id, current_user.user_id)
+) -> StreamingResponse | dict[str, str]:
     await message_service.validate_save_message(payload, current_user.user_id)
-    return StreamingResponse(
-        orchestrator.orchestrate_generation(model_id=payload.model_id, text=payload.content),
-        media_type="text/plain; charset=utf-8",
-    )
+    if payload.model_id:
+        await model_service.link_model(
+            payload.chat_id, payload.model_id, current_user.user_id
+        )
+        ai_message = StreamingResponse(
+            orchestrator.orchestrate_generation(
+                model_id=payload.model_id, text=payload.content
+            ),
+            media_type="text/plain; charset=utf-8",
+        )
+        return ai_message
+    return {"status": "ok"}
+
 
 @router.get("/")
 async def get_messages(
