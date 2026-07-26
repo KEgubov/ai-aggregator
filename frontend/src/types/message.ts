@@ -44,6 +44,17 @@ export function createId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** Последний message_id с сервера — явный parent для следующего сообщения. */
+export function getLastServerMessageId(messages: Message[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const id = Number(messages[i].id);
+    if (Number.isInteger(id) && id > 0) {
+      return id;
+    }
+  }
+  return undefined;
+}
+
 export function stripMentionTokens(
   text: string,
   modelTokens: string[],

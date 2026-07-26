@@ -1,4 +1,4 @@
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy_utils import Ltree
 from backend.src.core.database import async_session
 from backend.src.models.orm_models import ChatMessage
@@ -15,16 +15,6 @@ class MessageRepository:
             )
             result = await session.execute(query)
             return result.scalar_one_or_none()
-
-    @staticmethod
-    async def counting_messages(chat_id: int) -> int:
-        async with async_session() as session:
-            query = (
-                select(func.max(ChatMessage.message_id))
-                .where(ChatMessage.chat_id == chat_id)
-            )
-            result = await session.execute(query)
-            return result.scalar()
 
     @staticmethod
     async def create_message(message: ChatMessage) -> ChatMessage:

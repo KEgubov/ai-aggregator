@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import StreamingResponse
 
 from backend.src.api.dependency import (
@@ -27,20 +27,29 @@ async def stream_message(
     model_service: ModelService = Depends(get_model_service),
     message_service: MessageService = Depends(get_message_service),
     current_user: CurrentUserDTO = Depends(get_current_user),
-) -> StreamingResponse | dict[str, str]:
-    await message_service.validate_save_message(payload, current_user.user_id)
-    if payload.model_id:
-        await model_service.link_model(
-            payload.chat_id, payload.model_id, current_user.user_id
+) -> StreamingResponse | dict:
+    saved_user = await message_service.validate_save_message(
+        payload, current_user.user_id
+    )
+    if not saved_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to save message: invalid or missing parent_id",
         )
-        ai_message = StreamingResponse(
-            orchestrator.orchestrate_generation(
-                model_id=payload.model_id, text=payload.content
-            ),
-            media_type="text/plain; charset=utf-8",
-        )
-        return ai_message
-    return {"status": "ok"}
+    if not payload.model_id:
+        return {"status": "ok", "message": saved_user.model_dump(mode="json")}
+    await model_service.link_model(
+        payload.chat_id, payload.model_id, current_user.user_id
+    )
+    return StreamingResponse(
+        orchestrator.orchestrate_generation(
+            model_id=payload.model_id,
+            text=payload.content,
+            chat_id=payload.chat_id,
+            parent_id=saved_user.message_id,
+        ),
+        media_type="text/plain; charset=utf-8",
+    )
 
 
 @router.get("/")

@@ -21,6 +21,7 @@ async def get_token_payload(
 def get_ai_orchestrator(request: Request) -> AIOrchestrator:
     return AIOrchestrator(
         model_service=request.app.state.model_service,
+        message_service=request.app.state.message_service,
         gemini_client=request.app.state.gemini_client,
         groq_client=request.app.state.groq_client,
     )

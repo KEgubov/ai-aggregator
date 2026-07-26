@@ -4,7 +4,12 @@ import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
 import { fetchModels, findModelByName, type ApiModel } from '../api/models';
 import { fetchMessages, sendChatMessage, streamMessage } from '../api/message';
-import { createId, mapMessageFromApi, stripMentionTokens, type Message } from '../types/message';
+import {
+  getLastServerMessageId,
+  mapMessageFromApi,
+  stripMentionTokens,
+  type Message,
+} from '../types/message';
 import type { Chat } from '../types/chat';
 
 const MODEL_ICONS: LucideIcon[] = [Sparkles, Zap, Gem, Brain, Rocket, Satellite];
@@ -50,6 +55,12 @@ export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatView
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const modelsLoadedRef = useRef(false);
+  const messagesRef = useRef<Message[]>([]);
+  const sendingRef = useRef(false);
+  const loadSeqRef = useRef(0);
+  const streamSeqRef = useRef(0);
+
+  messagesRef.current = messages;
 
   const inputModels = useMemo(
     () => apiModels.map((model, index) => mapApiModelToInput(model, index)),
@@ -81,86 +92,39 @@ export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatView
   }, [isLoadingModels, loadModels]);
 
   useEffect(() => {
-    let cancelled = false;
+    const seq = ++loadSeqRef.current;
+    setIsLoadingMessages(true);
+    setMessagesError(null);
 
-    async function loadMessages() {
-      setIsLoadingMessages(true);
-      setMessagesError(null);
+    void (async () => {
       try {
         const apiMessages = await fetchMessages(chat.chat_id);
-        if (!cancelled) {
-          setMessages(apiMessages.map(mapMessageFromApi));
-        }
+        if (seq !== loadSeqRef.current || sendingRef.current) return;
+        setMessages(apiMessages.map(mapMessageFromApi));
       } catch (err) {
-        if (!cancelled) {
-          setMessagesError(err instanceof Error ? err.message : 'Не удалось загрузить сообщения');
-        }
+        if (seq !== loadSeqRef.current) return;
+        setMessagesError(err instanceof Error ? err.message : 'Не удалось загрузить сообщения');
       } finally {
-        if (!cancelled) {
+        if (seq === loadSeqRef.current) {
           setIsLoadingMessages(false);
         }
       }
-    }
-
-    void loadMessages();
-    return () => {
-      cancelled = true;
-    };
+    })();
   }, [chat.chat_id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const updateAssistantMessage = useCallback((id: string, patch: Partial<Message>) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
-  }, []);
-
-  const runGeneration = useCallback(
-    async (model: ApiModel, prompt: string, assistantId: string): Promise<Message> => {
-      let assistantText = '';
-      try {
-        await streamMessage(
-          {
-            chatId: chat.chat_id,
-            modelId: model.model_id,
-            content: prompt,
-          },
-          (chunk) => {
-            assistantText += chunk;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId ? { ...m, text: assistantText, isStreaming: true } : m,
-              ),
-            );
-          },
-        );
-
-        return {
-          id: assistantId,
-          type: 'ai',
-          text: assistantText,
-          modelName: model.display_name,
-          isStreaming: false,
-        };
-      } catch (err) {
-        const errorText = err instanceof Error ? err.message : 'Ошибка генерации';
-        const errorMessage: Message = {
-          id: assistantId,
-          type: 'ai',
-          text: `⚠ ${errorText}`,
-          modelName: model.display_name,
-          isStreaming: false,
-        };
-        updateAssistantMessage(assistantId, errorMessage);
-        return errorMessage;
-      }
-    },
-    [chat.chat_id, updateAssistantMessage],
-  );
+  const reloadFromServer = useCallback(async () => {
+    const apiMessages = await fetchMessages(chat.chat_id);
+    setMessages(apiMessages.map(mapMessageFromApi));
+  }, [chat.chat_id]);
 
   const handleSend = useCallback(
     async (payload: { text: string; modelTokens: string[]; memberTokens: string[] }) => {
+      if (sendingRef.current) return;
+
       const text = stripMentionTokens(
         payload.text,
         payload.modelTokens,
@@ -168,37 +132,40 @@ export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatView
       );
       if (!text) return;
 
-      let currentModels = apiModels;
-      if (currentModels.length === 0) {
-        currentModels = await loadModels();
-      }
+      const parentId = getLastServerMessageId(messagesRef.current);
+      const streamSeq = ++streamSeqRef.current;
 
-      if (payload.modelTokens.length === 0) {
-        setModelsError(null);
-        try {
-          await sendChatMessage({ chatId: chat.chat_id, content: text });
-          const apiMessages = await fetchMessages(chat.chat_id);
-          setMessages(apiMessages.map(mapMessageFromApi));
-        } catch (err) {
-          setMessagesError(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
-        }
-        return;
-      }
-
-      const targets = resolveTargetModels(currentModels, payload.modelTokens);
-      if (targets.length === 0) {
-        setModelsError('Выбранная модель не найдена. Проверьте список моделей.');
-        return;
-      }
-
+      sendingRef.current = true;
+      setMessagesError(null);
       setModelsError(null);
 
-      const assistantMessages: Message[] = [];
+      try {
+        let currentModels = apiModels;
+        if (currentModels.length === 0) {
+          currentModels = await loadModels();
+        }
 
-      for (const model of targets) {
-        const assistantId = createId();
+        if (payload.modelTokens.length === 0) {
+          await sendChatMessage({ chatId: chat.chat_id, content: text, parentId });
+          if (streamSeq !== streamSeqRef.current) return;
+          await reloadFromServer();
+          return;
+        }
+
+        const targets = resolveTargetModels(currentModels, payload.modelTokens);
+        if (targets.length === 0) {
+          setModelsError('Выбранная модель не найдена. Проверьте список моделей.');
+          return;
+        }
+
+        // Одна модель за запрос: иначе /message/send заново сохраняет user на каждый стрим.
+        const model = targets[0];
+        const userId = `local-user-${streamSeq}`;
+        const assistantId = `local-ai-${streamSeq}`;
+
         setMessages((prev) => [
           ...prev,
+          { id: userId, type: 'user', text, isMe: true },
           {
             id: assistantId,
             type: 'ai',
@@ -207,17 +174,62 @@ export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatView
             isStreaming: true,
           },
         ]);
-        assistantMessages.push(await runGeneration(model, text, assistantId));
-      }
 
-      try {
-        const apiMessages = await fetchMessages(chat.chat_id);
-        setMessages([...apiMessages.map(mapMessageFromApi), ...assistantMessages]);
+        let assistantText = '';
+        let acceptChunks = true;
+
+        try {
+          await streamMessage(
+            {
+              chatId: chat.chat_id,
+              modelId: model.model_id,
+              content: text,
+              parentId,
+            },
+            (chunk) => {
+              if (!acceptChunks || streamSeq !== streamSeqRef.current) return;
+              assistantText += chunk;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, text: assistantText, isStreaming: true }
+                    : m,
+                ),
+              );
+            },
+          );
+        } catch (err) {
+          acceptChunks = false;
+          const errorText = err instanceof Error ? err.message : 'Ошибка генерации';
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    text: `⚠ ${errorText}`,
+                    isStreaming: false,
+                  }
+                : m,
+            ),
+          );
+          setMessagesError(errorText);
+          return;
+        }
+
+        acceptChunks = false;
+        if (streamSeq !== streamSeqRef.current) return;
+
+        // Полностью заменить локальные temp-сообщения серверным снимком — без concat.
+        await reloadFromServer();
       } catch (err) {
-        setMessagesError(err instanceof Error ? err.message : 'Не удалось обновить сообщения');
+        setMessagesError(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
+      } finally {
+        if (streamSeq === streamSeqRef.current) {
+          sendingRef.current = false;
+        }
       }
     },
-    [apiModels, chat.chat_id, loadModels, runGeneration],
+    [apiModels, chat.chat_id, loadModels, reloadFromServer],
   );
 
   return (

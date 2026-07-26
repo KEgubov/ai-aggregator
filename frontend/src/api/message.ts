@@ -97,7 +97,11 @@ export async function streamMessage(
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      const tail = decoder.decode();
+      if (tail) onChunk(tail);
+      break;
+    }
     onChunk(decoder.decode(value, { stream: true }));
   }
 }
