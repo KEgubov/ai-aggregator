@@ -37,9 +37,10 @@ function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiM
 interface ChatViewProps {
   chat: Chat;
   onBack: () => void;
+  userInitials?: string;
 }
 
-export default function ChatView({ chat, onBack }: ChatViewProps) {
+export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [apiModels, setApiModels] = useState<ApiModel[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -260,7 +261,7 @@ export default function ChatView({ chat, onBack }: ChatViewProps) {
             {messagesError ?? 'Загрузка сообщений…'}
           </p>
         )}
-        <ChatThreading messages={messages} />
+        <ChatThreading messages={messages} userInitials={userInitials} />
         <div ref={bottomRef} aria-hidden="true" className="h-px" />
       </div>
 

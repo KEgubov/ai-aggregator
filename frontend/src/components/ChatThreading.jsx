@@ -26,7 +26,7 @@ function Avatar({ label, isAI, size = 'sm' }) {
       style={style}
       className={`shrink-0 ${dim} rounded-full flex items-center justify-center font-medium select-none`}
     >
-      {isAI ? <Sparkles className="w-3 h-3" /> : label.slice(0, 1)}
+      {isAI ? <Sparkles className="w-3 h-3" /> : label.slice(0, 2)}
     </div>
   );
 }
@@ -61,7 +61,7 @@ function Dot() {
   );
 }
 
-function Paragraph({ id, text, activeThread, onOpen }) {
+function Paragraph({ id, text, activeThread, onOpen, userInitials }) {
   const [hoverP, setHoverP] = useState(false);
   const [hoverIcon, setHoverIcon] = useState(false);
   const isActive = activeThread === id;
@@ -105,7 +105,7 @@ function Paragraph({ id, text, activeThread, onOpen }) {
 
         {isActive && (
           <div className="mt-2 flex items-center gap-2">
-            <AvatarStack labels={['Я']} />
+            <AvatarStack labels={[userInitials]} />
             <span className="text-xs" style={{ color: '#8a8a8a' }}>
               обсуждают этот абзац
             </span>
@@ -116,7 +116,7 @@ function Paragraph({ id, text, activeThread, onOpen }) {
   );
 }
 
-function ResponseFooter({ modelName, active, onOpen }) {
+function ResponseFooter({ modelName, active, onOpen, userInitials }) {
   const [hoverShare, setHoverShare] = useState(false);
 
   return (
@@ -128,7 +128,7 @@ function ResponseFooter({ modelName, active, onOpen }) {
       <div style={{ marginLeft: 16, height: 24 }} className="flex items-center gap-2">
         {active ? (
           <>
-            <AvatarStack labels={['Я']} />
+            <AvatarStack labels={[userInitials]} />
             <span className="text-xs" style={{ color: '#8a8a8a' }}>
               общий тред по этому ответу
             </span>
@@ -151,11 +151,11 @@ function ResponseFooter({ modelName, active, onOpen }) {
   );
 }
 
-function UserBubble({ text, isMe }) {
+function UserBubble({ text, isMe, userInitials }) {
   const radius = isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px';
   return (
     <div className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-      <Avatar label="Я" isAI={false} size="md" />
+      <Avatar label={userInitials} isAI={false} size="md" />
       <div
         style={{
           maxWidth: '75%',
@@ -171,27 +171,39 @@ function UserBubble({ text, isMe }) {
   );
 }
 
-function AIResponse({ messageId, paragraphs, modelName, isStreaming, activeThread, onThreadOpen, footerActive, onFooterOpen }) {
+function AIResponse({ messageId, paragraphs, modelName, isStreaming, activeThread, onThreadOpen, footerActive, onFooterOpen, userInitials }) {
   return (
     <div className="py-1">
       {paragraphs.map((p) => (
-        <Paragraph key={p.id} id={p.id} text={p.text} activeThread={activeThread} onOpen={onThreadOpen} />
+        <Paragraph
+          key={p.id}
+          id={p.id}
+          text={p.text}
+          activeThread={activeThread}
+          onOpen={onThreadOpen}
+          userInitials={userInitials}
+        />
       ))}
       {isStreaming && (
         <p className="text-sm pl-9 py-1 animate-pulse" style={{ color: '#8a8a8a' }}>
           генерирует ответ…
         </p>
       )}
-      <ResponseFooter modelName={modelName} active={footerActive} onOpen={onFooterOpen} />
+      <ResponseFooter
+        modelName={modelName}
+        active={footerActive}
+        onOpen={onFooterOpen}
+        userInitials={userInitials}
+      />
       <div style={{ height: 1, background: COLORS.divider, marginTop: 16 }} />
     </div>
   );
 }
 
 /**
- * @param {{ messages: import('../types/message').Message[] }} props
+ * @param {{ messages: import('../types/message').Message[], userInitials?: string }} props
  */
-export default function ChatThreading({ messages = [] }) {
+export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
   const [activeThread, setActiveThread] = useState(null);
   const [footerActive, setFooterActive] = useState({});
 
@@ -214,7 +226,14 @@ export default function ChatThreading({ messages = [] }) {
 
       {messages.map((msg) => {
         if (msg.type === 'user') {
-          return <UserBubble key={msg.id} text={msg.text} isMe={msg.isMe !== false} />;
+          return (
+            <UserBubble
+              key={msg.id}
+              text={msg.text}
+              isMe={msg.isMe !== false}
+              userInitials={userInitials}
+            />
+          );
         }
 
         const paragraphs = splitIntoParagraphs(msg.text);
@@ -229,6 +248,7 @@ export default function ChatThreading({ messages = [] }) {
             onThreadOpen={onThreadOpen}
             footerActive={!!footerActive[msg.id]}
             onFooterOpen={() => onFooterOpen(msg.id)}
+            userInitials={userInitials}
           />
         );
       })}

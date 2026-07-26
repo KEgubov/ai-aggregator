@@ -1,10 +1,8 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-
 from google import genai
 from google.genai.errors import APIError
-
 from backend.src.configs.api_config import api_settings
 
 logger = logging.getLogger(__name__)
@@ -31,7 +29,6 @@ class GeminiClient:
                     if chunk.text:
                         yield chunk.text
                 return
-
             except APIError as e:
                 if e.code == 429 and attempt < retries - 1:
                     logger.warning(
@@ -43,14 +40,12 @@ class GeminiClient:
                     await asyncio.sleep(delay)
                     delay *= 2
                     continue
-
                 logger.error("Google API Error: %s", e)
                 yield (
                     "Извините, сервер сейчас перегружен. "
                     "Пожалуйста, попробуйте позже. ⏳"
                 )
                 return
-
             except Exception as e:
                 logger.exception("Непредвиденная ошибка в GeminiClient: %s", e)
                 yield "Произошла ошибка при обработке запроса."

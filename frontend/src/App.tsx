@@ -2,20 +2,33 @@ import { useCallback, useEffect, useState } from 'react';
 import AuthForm from './components/AuthForm';
 import ChatHome from './components/ChatHome';
 import ChatView from './components/ChatView';
-import { logoutUser } from './api/auth';
+import ProfilePage from './components/ProfilePage';
+import { fetchProfile, logoutUser } from './api/auth';
 import { fetchChats } from './api/chat';
 import { ApiError } from './api/client';
 import type { Chat } from './types/chat';
+import { initialsFromEmail } from './types/user';
 
-type AppView = 'loading' | 'auth' | 'chats' | 'conversation';
+type AppView = 'loading' | 'auth' | 'chats' | 'conversation' | 'profile';
 
 const LOGOUT_FLAG = 'agregation_logged_out';
+const DEFAULT_INITIALS = 'Я';
 
 export default function App() {
   const [view, setView] = useState<AppView>('loading');
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [userInitials, setUserInitials] = useState(DEFAULT_INITIALS);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const profile = await fetchProfile();
+      setUserInitials(initialsFromEmail(profile.email));
+    } catch {
+      setUserInitials(DEFAULT_INITIALS);
+    }
+  }, []);
 
   const loadChats = useCallback(async (): Promise<boolean> => {
     setIsLoadingChats(true);
@@ -40,8 +53,13 @@ export default function App() {
       return;
     }
     const isAuthenticated = await loadChats();
-    setView(isAuthenticated ? 'chats' : 'auth');
-  }, [loadChats]);
+    if (isAuthenticated) {
+      await loadProfile();
+      setView('chats');
+    } else {
+      setView('auth');
+    }
+  }, [loadChats, loadProfile]);
 
   useEffect(() => {
     void bootstrap();
@@ -49,9 +67,9 @@ export default function App() {
 
   const handleAuthSuccess = useCallback(async () => {
     sessionStorage.removeItem(LOGOUT_FLAG);
-    await loadChats();
+    await Promise.all([loadChats(), loadProfile()]);
     setView('chats');
-  }, [loadChats]);
+  }, [loadChats, loadProfile]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -62,6 +80,7 @@ export default function App() {
     sessionStorage.setItem(LOGOUT_FLAG, '1');
     setChats([]);
     setActiveChat(null);
+    setUserInitials(DEFAULT_INITIALS);
     setView('auth');
   }, []);
 
@@ -89,6 +108,10 @@ export default function App() {
     setView('chats');
   }, []);
 
+  const handleOpenProfile = useCallback(() => {
+    setView('profile');
+  }, []);
+
   if (view === 'loading') {
     return (
       <div className="w-full min-h-screen bg-black text-white flex items-center justify-center">
@@ -104,7 +127,13 @@ export default function App() {
   }
 
   if (view === 'conversation' && activeChat) {
-    return <ChatView chat={activeChat} onBack={handleBackToChats} />;
+    return (
+      <ChatView chat={activeChat} onBack={handleBackToChats} userInitials={userInitials} />
+    );
+  }
+
+  if (view === 'profile') {
+    return <ProfilePage onBack={handleBackToChats} onLogout={handleLogout} />;
   }
 
   return (
@@ -115,6 +144,7 @@ export default function App() {
       onChatCreated={handleChatCreated}
       onChatDeleted={handleChatDeleted}
       onLogout={handleLogout}
+      onOpenProfile={handleOpenProfile}
       onRefresh={() => void loadChats()}
     />
   );

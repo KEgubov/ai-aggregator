@@ -1,9 +1,9 @@
 from typing import Any, AsyncGenerator
-
 from fastapi import HTTPException
 
 
 class AIOrchestrator:
+
     def __init__(self, model_service, gemini_client, groq_client):
         self.model_service = model_service
         self.gemini_client = gemini_client
@@ -12,6 +12,7 @@ class AIOrchestrator:
     async def orchestrate_generation(
         self, model_id: int, text: str
     ) -> AsyncGenerator[Any, Any]:
+
         meta_list = await self.model_service.get_meta_for_api(model_id)
 
         if not meta_list:
@@ -26,6 +27,7 @@ class AIOrchestrator:
                 model=model_name, prompt=text
             ):
                 yield chunk
+
         elif provider_name in [
             "groq",
             "allam",

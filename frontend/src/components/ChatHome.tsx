@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type MouseEvent } from 'react';
-import { Loader2, LogOut, MessageSquarePlus, MessagesSquare, Trash2 } from 'lucide-react';
+import { Loader2, LogOut, MessageSquarePlus, MessagesSquare, Trash2, UserRound } from 'lucide-react';
 import { createChat, deleteChat } from '../api/chat';
 import { ApiError } from '../api/client';
 import ConfirmDialog from './ConfirmDialog';
@@ -23,6 +23,7 @@ interface ChatHomeProps {
   onChatCreated: (chat: Chat) => void;
   onChatDeleted: (chatId: number) => void;
   onLogout: () => void;
+  onOpenProfile: () => void;
   onRefresh: () => void;
 }
 
@@ -33,6 +34,7 @@ export default function ChatHome({
   onChatCreated,
   onChatDeleted,
   onLogout,
+  onOpenProfile,
   onRefresh,
 }: ChatHomeProps) {
   const [showCreate, setShowCreate] = useState(false);
@@ -110,23 +112,42 @@ export default function ChatHome({
             Создайте чат, чтобы начать общение с ИИ
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl transition-colors"
-          style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = COLORS.text;
-            e.currentTarget.style.borderColor = COLORS.accent;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = COLORS.muted;
-            e.currentTarget.style.borderColor = COLORS.border;
-          }}
-        >
-          <LogOut className="w-4 h-4" />
-          Выйти
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl transition-colors"
+            style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = COLORS.text;
+              e.currentTarget.style.borderColor = COLORS.accent;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = COLORS.muted;
+              e.currentTarget.style.borderColor = COLORS.border;
+            }}
+          >
+            <UserRound className="w-4 h-4" />
+            Профиль
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl transition-colors"
+            style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = COLORS.text;
+              e.currentTarget.style.borderColor = COLORS.accent;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = COLORS.muted;
+              e.currentTarget.style.borderColor = COLORS.border;
+            }}
+          >
+            <LogOut className="w-4 h-4" />
+            Выйти
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6">

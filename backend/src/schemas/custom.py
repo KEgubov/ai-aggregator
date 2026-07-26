@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel, Field, EmailStr
 
 from backend.src.schemas.message_schema import MessageDTO
@@ -10,6 +13,13 @@ class AIModelMetaDTO(BaseModel):
     model_id: int
     display_name: str = Field(max_length=100, description='Display name for frontend')
     description: str = Field(max_length=20, description='Description model for frontend')
+
+class UserProfileDTO(BaseModel):
+    user_id: int
+    email: EmailStr = Field(max_length=255, description="Email")
+    about_me: str = Field(max_length=20, description="Краткое описание профиля")
+    created_at: Optional[datetime] = Field(description="Дата создания")
+    last_seen_at: Optional[datetime] = Field(description="Последняя активность")
 
 class ModelProviderResponse(BaseModel):
     model_name: str
