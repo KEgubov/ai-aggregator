@@ -57,9 +57,9 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   }
 
   return (
-    <div className="w-full min-h-screen bg-black text-white flex items-center justify-center p-6">
+    <div className="w-full min-h-dvh bg-black text-white flex items-center justify-center p-4 sm:p-6">
       <div
-        className="w-full max-w-md rounded-3xl p-8"
+        className="w-full max-w-md rounded-3xl p-5 sm:p-8"
         style={{ background: COLORS.box, border: `1px solid ${COLORS.border}` }}
       >
         <div className="text-center mb-8">

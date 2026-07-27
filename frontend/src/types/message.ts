@@ -5,6 +5,7 @@ export interface Message {
   isMe?: boolean;
   modelName?: string;
   isStreaming?: boolean;
+  createdAt?: string;
   parentId?: number | null;
   contextAnchor?: string | null;
   contextTextSnippet?: string | null;
@@ -34,10 +35,35 @@ export function mapMessageFromApi(dto: ApiMessage): Message {
     text: dto.content,
     isMe: dto.author_type === 'user',
     modelName: dto.ai_model ?? undefined,
+    createdAt: dto.created_at,
     parentId: dto.parent_id,
     contextAnchor: dto.context_anchor,
     contextTextSnippet: dto.context_text_snippet,
   };
+}
+
+/** «сегодня, 18:11» / «вчера, 14:30» / «27 июля, 18:11» */
+export function formatMessageDate(iso: string, now = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const time = date.toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMsg = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((startOfToday.getTime() - startOfMsg.getTime()) / 86_400_000);
+
+  if (diffDays === 0) return `сегодня, ${time}`;
+  if (diffDays === 1) return `вчера, ${time}`;
+
+  const dayMonth = date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  });
+  return `${dayMonth}, ${time}`;
 }
 
 export function createId(): string {

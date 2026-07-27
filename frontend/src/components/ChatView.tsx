@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
+import { Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
+import SidebarToggle from './SidebarToggle';
 import { fetchModels, findModelByName, type ApiModel } from '../api/models';
 import { fetchMessages, sendChatMessage, streamMessage } from '../api/message';
 import {
@@ -41,11 +42,15 @@ function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiM
 
 interface ChatViewProps {
   chat: Chat;
-  onBack: () => void;
   userInitials?: string;
+  onToggleSidebar?: () => void;
 }
 
-export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatViewProps) {
+export default function ChatView({
+  chat,
+  userInitials = 'Я',
+  onToggleSidebar,
+}: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [apiModels, setApiModels] = useState<ApiModel[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -233,41 +238,30 @@ export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatView
   );
 
   return (
-    <div className="w-full min-h-screen bg-black text-white flex flex-col">
+    <div className="h-full w-full bg-black text-white flex flex-col">
       <header
-        className="shrink-0 px-6 py-4 flex items-center gap-4"
-        style={{ borderBottom: `1px solid ${COLORS.border}` }}
+        className="shrink-0 px-4 sm:px-6 py-4"
+        style={{
+          borderBottom: `1px solid ${COLORS.border}`,
+          paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+        }}
       >
-        <button
-          type="button"
-          onClick={onBack}
-          className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-          style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = COLORS.text;
-            e.currentTarget.style.borderColor = '#F5A623';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = COLORS.muted;
-            e.currentTarget.style.borderColor = COLORS.border;
-          }}
-          aria-label="К списку чатов"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <div className="min-w-0">
-          <h1 className="text-base font-semibold truncate" style={{ color: COLORS.text }}>
-            {chat.name}
-          </h1>
-          {chat.description && (
-            <p className="text-xs truncate mt-0.5" style={{ color: COLORS.muted }}>
-              {chat.description}
-            </p>
-          )}
+        <div className="flex items-center gap-2 min-w-0">
+          {onToggleSidebar && <SidebarToggle onClick={onToggleSidebar} />}
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold truncate" style={{ color: COLORS.text }}>
+              {chat.name}
+            </h1>
+            {chat.description && (
+              <p className="text-xs truncate mt-0.5" style={{ color: COLORS.muted }}>
+                {chat.description}
+              </p>
+            )}
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {(messagesError || isLoadingMessages) && (
           <p className="text-center text-xs mb-3" style={{ color: messagesError ? '#f87171' : COLORS.muted }}>
             {messagesError ?? 'Загрузка сообщений…'}
@@ -277,7 +271,10 @@ export default function ChatView({ chat, onBack, userInitials = 'Я' }: ChatView
         <div ref={bottomRef} aria-hidden="true" className="h-px" />
       </div>
 
-      <div className="shrink-0 px-6 pb-8 pt-2">
+      <div
+        className="shrink-0 px-4 sm:px-6 pt-2"
+        style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))' }}
+      >
         {(modelsError || isLoadingModels) && (
           <p className="text-center text-xs mb-3" style={{ color: modelsError ? '#f87171' : COLORS.muted }}>
             {modelsError ?? 'Загрузка моделей…'}

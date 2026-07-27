@@ -1,4 +1,6 @@
-from sqlalchemy import select, update
+import asyncio
+
+from sqlalchemy import select, update, func
 from sqlalchemy_utils import Ltree
 from backend.src.core.database import async_session
 from backend.src.models.orm_models import ChatMessage
@@ -46,6 +48,20 @@ class MessageRepository:
                 select(ChatMessage)
                 .where(ChatMessage.chat_id == chat_id)
                 .order_by(ChatMessage.message_id)
+            )
+            result = await session.execute(query)
+            return list(result.scalars().all())
+
+    @staticmethod
+    async def get_branch_messages(chat_id: int, leaf_path: str) -> list[ChatMessage]:
+        async with async_session() as session:
+            query = (
+                select(ChatMessage)
+                .where(
+                    ChatMessage.chat_id == chat_id,
+                    ChatMessage.path.ancestor_of(Ltree(leaf_path)),
+                )
+                .order_by(func.nlevel(ChatMessage.path))
             )
             result = await session.execute(query)
             return list(result.scalars().all())

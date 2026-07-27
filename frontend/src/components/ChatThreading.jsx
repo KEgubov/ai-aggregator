@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, Share2, CornerDownRight } from 'lucide-react';
-import { splitIntoParagraphs } from '../types/message';
+import { Sparkles, CornerDownRight, MoreHorizontal, GitBranch } from 'lucide-react';
+import { formatMessageDate, splitIntoParagraphs } from '../types/message';
 
 const COLORS = {
   chatBg: '#191919',
@@ -13,6 +13,10 @@ const COLORS = {
   iconDefault: '#737373',
   iconHover: '#fbbf24',
   accent: '#fbbf24',
+  menuBg: '#2D2D2D',
+  menuBorder: '#424242',
+  menuMuted: '#949494',
+  menuText: '#EDEDED',
 };
 
 const markdownComponents = {
@@ -66,7 +70,7 @@ const markdownComponents = {
 
 function MarkdownText({ text }) {
   return (
-    <div className="text-base leading-relaxed" style={{ color: '#d4d4d4' }}>
+    <div className="text-base leading-relaxed break-words [overflow-wrap:anywhere]" style={{ color: '#d4d4d4' }}>
       <ReactMarkdown components={markdownComponents}>{text}</ReactMarkdown>
     </div>
   );
@@ -136,14 +140,23 @@ function Paragraph({ id, text, activeThread, onOpen, userInitials }) {
     >
       <div
         className="flex items-center justify-center transition-opacity duration-200"
-        style={{ width: 14, marginRight: 8, opacity: showGutter ? 1 : 0 }}
+        style={{
+          width: 28,
+          marginRight: 4,
+          opacity: isActive ? 0 : showGutter ? 1 : undefined,
+        }}
       >
         <button
           type="button"
           onClick={() => onOpen(id)}
           onMouseEnter={() => setHoverIcon(true)}
           onMouseLeave={() => setHoverIcon(false)}
-          className="transition-colors duration-200"
+          className={[
+            'p-1.5 -m-1 transition-colors duration-200',
+            !isActive && !showGutter ? 'opacity-40 [@media(hover:hover)]:opacity-0' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           style={{ color: hoverIcon ? COLORS.iconHover : COLORS.iconDefault, lineHeight: 0 }}
           aria-label="начать обсуждение абзаца"
         >
@@ -156,11 +169,11 @@ function Paragraph({ id, text, activeThread, onOpen, userInitials }) {
         style={{ width: 2, marginRight: 12, background: showGutter ? COLORS.gutterLine : 'transparent' }}
       />
 
-      <div className="flex-1 py-2.5">
+      <div className="flex-1 min-w-0 py-2.5">
         <MarkdownText text={text} />
 
         {isActive && (
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
             <AvatarStack labels={[userInitials]} />
             <span className="text-xs" style={{ color: '#8a8a8a' }}>
               обсуждают этот абзац
@@ -172,36 +185,107 @@ function Paragraph({ id, text, activeThread, onOpen, userInitials }) {
   );
 }
 
-function ResponseFooter({ modelName, active, onOpen, userInitials }) {
-  const [hoverShare, setHoverShare] = useState(false);
+function MessageMoreMenu({ createdAt, branchActive, onBranch }) {
+  const [open, setOpen] = useState(false);
+  const [hoverBtn, setHoverBtn] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onPointerDown(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    function onKeyDown(event) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const dateLabel = createdAt ? formatMessageDate(createdAt) : null;
 
   return (
-    <div className="flex items-center pl-9">
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        onMouseEnter={() => setHoverBtn(true)}
+        onMouseLeave={() => setHoverBtn(false)}
+        className="p-1.5 -m-1 rounded-md transition-colors duration-200"
+        style={{ color: open || hoverBtn ? COLORS.accent : COLORS.iconDefault, lineHeight: 0 }}
+        aria-label="Действия с сообщением"
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 bottom-full mb-2 z-30 min-w-[220px] rounded-xl py-1.5 shadow-2xl"
+          style={{
+            background: COLORS.menuBg,
+            border: `1px solid ${COLORS.menuBorder}`,
+          }}
+        >
+          {dateLabel && (
+            <p className="px-3.5 pt-1.5 pb-2 text-xs" style={{ color: COLORS.menuMuted }}>
+              {dateLabel}
+            </p>
+          )}
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onBranch();
+              setOpen(false);
+            }}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-sm transition-colors"
+            style={{ color: COLORS.menuText }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#3C3C3C';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <GitBranch className="w-4 h-4 shrink-0" style={{ color: COLORS.menuMuted }} />
+            <span>{branchActive ? 'Скрыть ветку' : 'Ветка в новом чате'}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResponseFooter({ modelName, createdAt, active, onBranch, userInitials }) {
+  return (
+    <div className="flex items-center pl-7 sm:pl-9 min-w-0 flex-wrap gap-y-2">
       <Avatar label={modelName || 'AI'} isAI />
-      <div style={{ marginLeft: 16, height: 24, display: 'flex', alignItems: 'center' }}>
+      <div style={{ marginLeft: 12, height: 24, display: 'flex', alignItems: 'center' }}>
         <Dot />
       </div>
-      <div style={{ marginLeft: 16, height: 24 }} className="flex items-center gap-2">
+      <div style={{ marginLeft: 12, height: 24 }} className="flex items-center gap-2 min-w-0">
         {active ? (
           <>
             <AvatarStack labels={[userInitials]} />
-            <span className="text-xs" style={{ color: '#8a8a8a' }}>
+            <span className="text-xs truncate" style={{ color: '#8a8a8a' }}>
               общий тред по этому ответу
             </span>
           </>
-        ) : (
-          <button
-            type="button"
-            onClick={onOpen}
-            onMouseEnter={() => setHoverShare(true)}
-            onMouseLeave={() => setHoverShare(false)}
-            className="transition-colors duration-200"
-            style={{ color: hoverShare ? COLORS.accent : COLORS.iconDefault, lineHeight: 0 }}
-            aria-label="создать общий тред"
-          >
-            <Share2 className="w-4 h-4" />
-          </button>
-        )}
+        ) : null}
+        <MessageMoreMenu createdAt={createdAt} branchActive={active} onBranch={onBranch} />
       </div>
     </div>
   );
@@ -210,16 +294,16 @@ function ResponseFooter({ modelName, active, onOpen, userInitials }) {
 function UserBubble({ text, isMe, userInitials }) {
   const radius = isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px';
   return (
-    <div className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className={`flex items-end gap-2 min-w-0 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
       <Avatar label={userInitials} isAI={false} size="md" />
       <div
         style={{
-          maxWidth: '75%',
+          maxWidth: 'min(75%, 100%)',
           background: isMe ? COLORS.myBubble : COLORS.otherBubble,
           color: '#d4d4d4',
           borderRadius: radius,
         }}
-        className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
+        className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0"
       >
         {text}
       </div>
@@ -227,7 +311,18 @@ function UserBubble({ text, isMe, userInitials }) {
   );
 }
 
-function AIResponse({ messageId, paragraphs, modelName, isStreaming, activeThread, onThreadOpen, footerActive, onFooterOpen, userInitials }) {
+function AIResponse({
+  messageId,
+  paragraphs,
+  modelName,
+  createdAt,
+  isStreaming,
+  activeThread,
+  onThreadOpen,
+  footerActive,
+  onFooterOpen,
+  userInitials,
+}) {
   return (
     <div className="py-1">
       {paragraphs.map((p) => (
@@ -247,8 +342,9 @@ function AIResponse({ messageId, paragraphs, modelName, isStreaming, activeThrea
       )}
       <ResponseFooter
         modelName={modelName}
+        createdAt={createdAt}
         active={footerActive}
-        onOpen={onFooterOpen}
+        onBranch={onFooterOpen}
         userInitials={userInitials}
       />
       <div style={{ height: 1, background: COLORS.divider, marginTop: 16 }} />
@@ -299,6 +395,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
             messageId={msg.id}
             paragraphs={paragraphs}
             modelName={msg.modelName}
+            createdAt={msg.createdAt}
             isStreaming={msg.isStreaming}
             activeThread={activeThread}
             onThreadOpen={onThreadOpen}

@@ -1,4 +1,5 @@
 from typing import Any, AsyncGenerator
+
 from fastapi import HTTPException
 
 
@@ -14,7 +15,6 @@ class AIOrchestrator:
         self,
         chat_id: int,
         model_id: int,
-        text: str,
         parent_id: int,
     ) -> AsyncGenerator[Any, Any]:
 
@@ -27,25 +27,18 @@ class AIOrchestrator:
         provider_name = meta.provider_name
         model_name = meta.model_name
 
+        leaf = await self.message_service.get_message(
+            parent_id)
+        history = await self.message_service.get_history_for_generation(
+            chat_id, str(leaf.path)
+        )
+
         parts: list[str] = []
 
         if provider_name in ["gemini", "gem"]:
-            async for chunk in self.gemini_client.stream_response(
-                model=model_name, prompt=text
-            ):
-                if isinstance(chunk, tuple) and chunk[0] == "usage":
-                    await self.message_service.save_ai_message(
-                        chat_id=chat_id,
-                        parent_id=parent_id,
-                        ai_model=model_name,
-                        ai_provider=provider_name,
-                        content="".join(parts),
-                        metadata=chunk[1],
-                    )
-                else:
-                    parts.append(chunk)
-                    yield chunk
-
+            stream = self.gemini_client.stream_response(
+                model=model_name, messages=history
+            )
         elif provider_name in [
             "groq",
             "allam",
@@ -55,20 +48,24 @@ class AIOrchestrator:
             "qwen",
             "whisper",
         ]:
-            async for chunk in self.groq_client.stream_chat(
-                model=model_name, prompt=text
-            ):
-                parts.append(chunk)
-                yield chunk
-            await self.message_service.save_ai_message(
-                chat_id=chat_id,
-                parent_id=parent_id,
-                ai_model=model_name,
-                ai_provider=provider_name,
-                content="".join(parts),
-                metadata={},
+            stream = self.groq_client.stream_chat(
+                model=model_name, messages=history
             )
         else:
             raise HTTPException(
                 status_code=400, detail=f"Provider '{provider_name}' is not supported"
             )
+
+        async for chunk in stream:
+            if isinstance(chunk, tuple) and chunk[0] == "usage":
+                await self.message_service.save_ai_message(
+                    chat_id=chat_id,
+                    parent_id=parent_id,
+                    ai_model=model_name,
+                    ai_provider=provider_name,
+                    content="".join(parts),
+                    metadata=chunk[1],
+                )
+            else:
+                parts.append(chunk)
+                yield chunk

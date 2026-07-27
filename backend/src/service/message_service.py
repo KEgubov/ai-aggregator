@@ -7,6 +7,12 @@ class MessageService:
     def __init__(self, message_repository) -> None:
         self.message_repository = message_repository
 
+    async def get_message(self, parent_id: int) -> MessageDTO | None:
+        message = await self.message_repository.get_message_by_id(parent_id)
+        if not message:
+            return None
+        return message
+
     async def validate_save_message(
         self,
         message: MessageAddDTO,
@@ -35,7 +41,7 @@ class MessageService:
                 return None
             return MessageDTO.model_validate(added_message, from_attributes=True)
 
-        parent = await self.message_repository.get_message_by_id(message.parent_id)
+        parent = await self.get_message(message.parent_id)
         if parent is None or parent.chat_id != message.chat_id:
             return None
 
@@ -67,7 +73,7 @@ class MessageService:
         metadata: dict | None = None,
     ) -> MessageDTO | None:
         """Сохраняет ответ ассистента как дочернее к явному parent_id (user-сообщение)."""
-        parent = await self.message_repository.get_message_by_id(parent_id)
+        parent = await self.get_message(parent_id)
         if parent is None or parent.chat_id != chat_id:
             return None
 
@@ -98,3 +104,15 @@ class MessageService:
                 for row in all_messages
             ]
         )
+
+    async def get_history_for_generation(
+        self, chat_id: int, leaf_path: str
+    ) -> list[dict]:
+        rows = await self.message_repository.get_branch_messages(chat_id, leaf_path)
+        history = []
+        for row in rows:
+            if not row.content:
+                continue
+            role = "user" if row.author_type == "user" else "assistant"
+            history.append({"role": role, "content": row.content})
+        return history

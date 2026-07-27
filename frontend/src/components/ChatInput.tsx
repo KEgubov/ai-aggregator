@@ -24,8 +24,9 @@ const CHAT_INPUT_STYLES = `
   border: 1px solid #424242;
   border-radius: 24px;
   padding: 6px;
+  overflow: hidden;
 }
-.cip-box.cip-row { height: 48px; display: flex; align-items: center; gap: 8px; }
+.cip-box.cip-row { min-height: 48px; display: flex; align-items: center; gap: 8px; }
 .cip-box.cip-col { display: flex; flex-direction: column; gap: 6px; min-height: 48px; }
 
 .cip-icon-btn {
@@ -46,11 +47,65 @@ const CHAT_INPUT_STYLES = `
 
 .cip-send-cluster { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .cip-separator-dot { width: 4px; height: 4px; border-radius: 999px; background: #2D2D2D; flex-shrink: 0; }
-.cip-send-label { font-size: 14px; color: #C7C7C7; white-space: nowrap; }
+.cip-send-label { font-size: 14px; color: #C7C7C7; white-space: nowrap; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
 .cip-send-btn { background: #F5A623; color: #1a1a1a; }
 .cip-send-btn:hover { background: #ffb64a; }
 
+@media (max-width: 480px) {
+  .cip-send-label,
+  .cip-separator-dot { display: none; }
+  .cip-menu { max-width: 100%; }
+}
+
 .cip-controls-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Привязанная модель — над полем ввода, живёт между отправками */
+.cip-bound-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 0;
+}
+.cip-bound-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 2px 2px;
+  border-radius: 8px;
+  max-width: 100%;
+  color: #FFBC50;
+  font-size: 14px;
+  line-height: 20px;
+}
+.cip-bound-tag:hover { background: rgba(255, 188, 80, 0.08); }
+.cip-bound-tag-icon {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #FFBC50;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.cip-bound-tag-icon-default { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity .1s ease; }
+.cip-bound-tag-icon-remove {
+  position: absolute; inset: 0; display: grid; place-items: center; border-radius: 999px;
+  background: #FF9D00; color: #191919; font-size: 10px; line-height: 1; opacity: 0;
+  transition: opacity .1s ease;
+}
+.cip-bound-tag-icon-remove::before { content: '✕'; }
+.cip-bound-tag-icon:hover .cip-bound-tag-icon-default { opacity: 0; }
+.cip-bound-tag-icon:hover .cip-bound-tag-icon-remove { opacity: 1; }
+.cip-bound-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .cip-editable-wrap { position: relative; display: grid; flex: 1; min-width: 0; }
 .cip-editable, .cip-placeholder { grid-area: 1 / 1; }
@@ -61,9 +116,23 @@ const CHAT_INPUT_STYLES = `
   color: #EDEDED;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
   max-height: 160px;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 6px 2px;
+  min-width: 0;
+  /* Браузер не должен тащить жёлтый цвет тега в обычный набор */
+  -webkit-text-fill-color: #EDEDED;
+}
+.cip-editable .cip-token-name,
+.cip-editable .cip-mention-live {
+  -webkit-text-fill-color: #FFBC50;
+  color: #FFBC50;
+}
+.cip-editable [data-plain='1'] {
+  -webkit-text-fill-color: #EDEDED;
+  color: #EDEDED;
 }
 .cip-placeholder {
   pointer-events: none;
@@ -111,7 +180,23 @@ const CHAT_INPUT_STYLES = `
   z-index: 50;
   overflow: hidden;
 }
-.cip-menu-scroll { max-height: 290px; overflow-y: auto; padding: 6px 0; }
+.cip-menu-scroll {
+  max-height: 290px;
+  overflow-y: auto;
+  padding: 6px 0;
+  scrollbar-width: thin;
+  scrollbar-color: #5a5a5a transparent;
+}
+.cip-menu-scroll::-webkit-scrollbar { width: 8px; }
+.cip-menu-scroll::-webkit-scrollbar-track { background: transparent; }
+.cip-menu-scroll::-webkit-scrollbar-thumb {
+  background: #5a5a5a;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.cip-menu-scroll::-webkit-scrollbar-thumb:hover { background: #737373; }
+.cip-menu-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 .cip-group-label {
   padding: 6px 12px 4px;
   font-size: 11px;
@@ -233,6 +318,7 @@ function getFullFlatIndex(kind: 'model' | 'member', id: string, aiModels: InputA
 type MentionAnchor =
   | { mode: 'range'; node: Text; start: number; end: number }
   | { mode: 'token'; tokenEl: HTMLElement }
+  | { mode: 'bound' }
   | { mode: 'none' };
 
 interface SendConfig {
@@ -314,9 +400,57 @@ function unwrapMentionLiveNode(root: HTMLElement): Text | null {
 
 /**
  * Убирает пустые блочные обёртки, которые браузер иногда оставляет после удаления
- * текста перед тегом, и гарантирует, что сразу после каждого тега есть обычный
- * текстовый узел — без него курсор может "прилипнуть" к стилю тега при наборе.
+ * текста перед тегом, и гарантирует, что сразу после каждого тега есть носитель
+ * обычного текста с явным цветом — иначе Chrome наследует жёлтый цвет тега.
  */
+function ensurePlainCarrierAfter(tokenEl: HTMLElement): HTMLElement {
+  const next = tokenEl.nextSibling;
+  if (next instanceof HTMLElement && next.dataset.plain === '1') {
+    next.style.color = '#EDEDED';
+    if (!next.firstChild) {
+      next.appendChild(document.createTextNode(''));
+    }
+    return next;
+  }
+  const carrier = document.createElement('span');
+  carrier.dataset.plain = '1';
+  carrier.style.color = '#EDEDED';
+  if (next && next.nodeType === Node.TEXT_NODE) {
+    carrier.appendChild(next);
+  } else {
+    carrier.appendChild(document.createTextNode('\u00A0'));
+  }
+  tokenEl.after(carrier);
+  return carrier;
+}
+
+function placeCaretAfterToken(badge: HTMLElement) {
+  const carrier = ensurePlainCarrierAfter(badge);
+  const text = carrier.firstChild;
+  if (text && text.nodeType === Node.TEXT_NODE) {
+    placeCaretAtTextEnd(text as Text);
+  } else {
+    placeCaretAfter(carrier);
+  }
+}
+
+/** Сбрасывает жёлтый/цветной стиль, который браузер «протекает» из тега в обычный текст. */
+function normalizeLeakedColors(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>('font, span').forEach((el) => {
+    if (el.closest('[data-token]')) return;
+    if (el.classList.contains('cip-mention-live')) return;
+    if (el.dataset.plain === '1') {
+      el.style.color = '#EDEDED';
+      el.removeAttribute('color');
+      return;
+    }
+    if (el.style.color || el.getAttribute('color') || el.tagName === 'FONT') {
+      el.style.color = '#EDEDED';
+      el.removeAttribute('color');
+    }
+  });
+}
+
 function cleanupDom(root: HTMLElement) {
   root.querySelectorAll('div, p').forEach((el) => {
     if (!el.textContent?.trim() && el.querySelectorAll('[data-token]').length === 0) {
@@ -324,11 +458,9 @@ function cleanupDom(root: HTMLElement) {
     }
   });
   root.querySelectorAll<HTMLElement>('[data-token]').forEach((tokenEl) => {
-    const next = tokenEl.nextSibling;
-    if (!next || next.nodeType !== Node.TEXT_NODE) {
-      tokenEl.after(document.createTextNode(''));
-    }
+    ensurePlainCarrierAfter(tokenEl);
   });
+  normalizeLeakedColors(root);
 }
 
 function modelGlyphSvg(): string {
@@ -496,9 +628,14 @@ function ChatInput({
   const [mentionQuery, setMentionQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionActive, setMentionActive] = useState(false);
-  // Все теги моделей/людей в тексте (не только последний) — нужно для логики кнопки отправки
-  const [modelTokenNames, setModelTokenNames] = useState<string[]>([]);
+  /** Модель, привязанная к окну ввода — остаётся после отправки, пока не удалят тег. */
+  const [boundModel, setBoundModel] = useState<InputAiModel | null>(null);
   const [memberTokenNames, setMemberTokenNames] = useState<string[]>([]);
+
+  const modelTokenNames = useMemo(
+    () => (boundModel ? [boundModel.name] : []),
+    [boundModel],
+  );
 
   const { models, members, flat } = useMemo(
     () => getFilteredLists(mentionQuery, aiModels, teamMembers),
@@ -513,15 +650,18 @@ function ChatInput({
     }
   }, []);
 
-  // Измеряем перенос строк на СКРЫТОМ клоне с ПОСТОЯННОЙ шириной (та же, что у
-  // развёрнутой col-раскладки), а не на видимом поле — так решение не зависит от
-  // того, в каком режиме мы сейчас находимся, и не может зациклиться.
+  // Развёрнутая (col) раскладка: при любом контенте — иначе боковые кнопки в row
+  // сжимают поле, текст переносится, а фиксированная высота даёт вылет наружу.
+  // Дополнительно смотрим скрытый клон на случай, если контент выше одной строки
+  // уже на полной ширине (токен + текст).
   const measureMultiline = useCallback(() => {
     const editable = inputRef.current;
     const measure = measureRef.current;
     if (!editable || !measure) return;
     measure.innerHTML = editable.innerHTML;
-    setIsMultiline(measure.scrollHeight > 44);
+    const hasContent = !isRootEmpty(editable);
+    const wrapsAtFullWidth = measure.scrollHeight > 44;
+    setIsMultiline(hasContent || wrapsAtFullWidth);
   }, []);
 
   const closeMenu = useCallback(() => {
@@ -535,20 +675,50 @@ function ChatInput({
     const root = inputRef.current;
     if (!root) return;
     cleanupDom(root);
+    // Инлайн-теги моделей больше не используем — убираем, если остались.
+    root.querySelectorAll<HTMLElement>('[data-token="model"]').forEach((el) => el.remove());
     const empty = isRootEmpty(root);
     setIsEmpty(empty);
     if (empty && root.innerHTML !== '') {
       root.innerHTML = '';
     }
-    const models_: string[] = [];
     const members_: string[] = [];
-    root.querySelectorAll<HTMLElement>('[data-token]').forEach((t) => {
-      const name = t.dataset.name || '';
-      if (t.dataset.token === 'model') models_.push(name);
-      else members_.push(name);
+    root.querySelectorAll<HTMLElement>('[data-token="member"]').forEach((t) => {
+      members_.push(t.dataset.name || '');
     });
-    setModelTokenNames(models_);
     setMemberTokenNames(members_);
+  }, []);
+
+  /** Удаляет @query / live-mention из editable, оставляя каретку на месте. */
+  const clearMentionFromEditable = useCallback(() => {
+    const root = inputRef.current;
+    if (!root) return;
+    const anchor = mentionRef.current;
+
+    if (anchor.mode === 'range') {
+      const { node, start, end } = anchor;
+      const liveSpan = node.parentElement?.classList.contains('cip-mention-live')
+        ? node.parentElement
+        : null;
+      if (liveSpan) {
+        const spacer = document.createTextNode('');
+        liveSpan.replaceWith(spacer);
+        placeCaretAtTextEnd(spacer);
+      } else if (node) {
+        const range = document.createRange();
+        range.setStart(node, Math.max(0, Math.min(start, node.length)));
+        range.setEnd(node, Math.max(0, Math.min(end, node.length)));
+        range.deleteContents();
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    }
+
+    while (root.querySelector('.cip-mention-live')) {
+      unwrapMentionLiveNode(root);
+    }
   }, []);
 
   // ── Проверка "курсор сейчас в позиции @|" или "@query|" — используется и при вводе,
@@ -597,22 +767,46 @@ function ChatInput({
     (item: FlatItem) => {
       const root = inputRef.current;
       if (!root) return;
+
+      // Модель привязывается к окну ввода, а не вставляется в текст.
+      if (item.kind === 'model') {
+        clearMentionFromEditable();
+        setBoundModel({
+          id: item.id,
+          name: item.name,
+          desc: item.desc,
+          count: item.count,
+          Icon: item.Icon,
+        });
+        root.focus();
+        setMentionActive(false);
+        closeMenu();
+        syncFromDom();
+        measureMultiline();
+        return;
+      }
+
       const anchor = mentionRef.current;
       const badge = buildBadgeElement(item);
 
       if (anchor.mode === 'token') {
         anchor.tokenEl.replaceWith(badge);
-        placeCaretAfter(badge);
+        placeCaretAfterToken(badge);
       } else if (anchor.mode === 'range') {
         const { node, start, end } = anchor;
-        const range = document.createRange();
-        range.setStart(node, Math.max(0, Math.min(start, node.length)));
-        range.setEnd(node, Math.max(0, Math.min(end, node.length)));
-        range.deleteContents();
-        range.insertNode(badge);
-        const space = document.createTextNode('\u00A0');
-        badge.after(space);
-        placeCaretAfter(space);
+        const liveSpan = node.parentElement?.classList.contains('cip-mention-live')
+          ? node.parentElement
+          : null;
+        if (liveSpan) {
+          liveSpan.replaceWith(badge);
+        } else {
+          const range = document.createRange();
+          range.setStart(node, Math.max(0, Math.min(start, node.length)));
+          range.setEnd(node, Math.max(0, Math.min(end, node.length)));
+          range.deleteContents();
+          range.insertNode(badge);
+        }
+        placeCaretAfterToken(badge);
       }
 
       root.focus();
@@ -621,7 +815,27 @@ function ChatInput({
       syncFromDom();
       measureMultiline();
     },
-    [closeMenu, syncFromDom, measureMultiline]
+    [closeMenu, syncFromDom, measureMultiline, clearMentionFromEditable]
+  );
+
+  const removeBoundModel = useCallback((e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setBoundModel(null);
+    if (showMenu) closeMenu();
+  }, [showMenu, closeMenu]);
+
+  const openBoundModelMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (!boundModel) return;
+      mentionRef.current = { mode: 'bound' };
+      setMentionQuery('');
+      setHighlightedIndex(Math.max(0, getFullFlatIndex('model', boundModel.id, aiModels, teamMembers)));
+      setShowMenu(true);
+      onMentionOpen?.();
+    },
+    [boundModel, aiModels, teamMembers, onMentionOpen],
   );
 
   const handleRootClick = useCallback(
@@ -766,10 +980,10 @@ function ChatInput({
     }
     const text = extractEditableText(root);
     onSend?.({ text, modelTokens: modelTokenNames, memberTokens: memberTokenNames });
+    // Текст очищаем, привязанную модель оставляем.
     root.innerHTML = '';
     setIsEmpty(true);
     setIsMultiline(false);
-    setModelTokenNames([]);
     setMemberTokenNames([]);
     setMentionActive(false);
     closeMenu();
@@ -837,7 +1051,14 @@ function ChatInput({
     return { label: 'Send to All', icon: 'arrow' };
   }, [modelTokenNames]);
 
-  const showSendCluster = !isEmpty && !showMenu;
+  const hasBoundModel = boundModel !== null;
+  const showSendCluster = (!isEmpty || hasBoundModel) && !showMenu;
+  // Привязанная модель всегда держит col-раскладку (тег сверху, как на макете)
+  const expanded = isMultiline || !isEmpty || hasBoundModel;
+
+  const effectivePlaceholder = hasBoundModel
+    ? `Ask ${boundModel.name}`
+    : placeholder;
 
   const rightControls = showSendCluster ? (
     <div className="cip-send-cluster">
@@ -846,7 +1067,14 @@ function ChatInput({
       </button>
       <span className="cip-separator-dot" />
       <span className="cip-send-label">{sendConfig.label}</span>
-      <button type="button" onClick={handleSend} aria-label={sendConfig.label} className="cip-icon-btn cip-send-btn">
+      <button
+        type="button"
+        onClick={handleSend}
+        disabled={isEmpty}
+        aria-label={sendConfig.label}
+        className="cip-icon-btn cip-send-btn"
+        style={isEmpty ? { opacity: 0.55, cursor: 'default' } : undefined}
+      >
         {sendConfig.icon === 'debate' && <Users size={16} />}
         {sendConfig.icon === 'model' && <Bot size={16} />}
         {sendConfig.icon === 'arrow' && <ArrowUp size={18} />}
@@ -873,8 +1101,45 @@ function ChatInput({
         />
       )}
 
-      <div className={`cip-box ${isMultiline ? 'cip-col' : 'cip-row'}`}>
-        {!isMultiline && (
+      <div className={`cip-box ${expanded ? 'cip-col' : 'cip-row'}`}>
+        {hasBoundModel && (
+          <div className="cip-bound-row">
+            <div className="cip-bound-tag">
+              <button
+                type="button"
+                className="cip-bound-tag-icon"
+                aria-label={`Удалить модель ${boundModel.name}`}
+                onClick={removeBoundModel}
+              >
+                <span className="cip-bound-tag-icon-default" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" />
+                  </svg>
+                </span>
+                <span className="cip-bound-tag-icon-remove" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="cip-bound-tag-name"
+                onClick={openBoundModelMenu}
+                aria-label={`Модель ${boundModel.name}. Нажмите, чтобы сменить`}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  color: 'inherit',
+                  font: 'inherit',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                {boundModel.name}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!expanded && (
           <button type="button" aria-label="Добавить вложение" className="cip-icon-btn">
             <Plus size={18} />
           </button>
@@ -899,12 +1164,12 @@ function ChatInput({
             style={{ caretColor: mentionActive ? '#FFBC50' : '#EDEDED' }}
             className="cip-editable"
           />
-          {isEmpty && <span className="cip-placeholder">{placeholder}</span>}
+          {isEmpty && <span className="cip-placeholder">{effectivePlaceholder}</span>}
         </div>
 
-        {!isMultiline && rightControls}
+        {!expanded && rightControls}
 
-        {isMultiline && (
+        {expanded && (
           <div className="cip-controls-row">
             <button type="button" aria-label="Добавить вложение" className="cip-icon-btn">
               <Plus size={18} />

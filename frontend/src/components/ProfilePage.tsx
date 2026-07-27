@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Loader2, LogOut, Mail, UserRound } from 'lucide-react';
+import { Loader2, Mail, UserRound } from 'lucide-react';
 import { fetchProfile } from '../api/auth';
 import { ApiError } from '../api/client';
 import { initialsFromEmail, type UserProfile } from '../types/user';
+import SidebarToggle from './SidebarToggle';
 
 const COLORS = {
   box: '#2D2D2D',
@@ -13,11 +14,6 @@ const COLORS = {
   muted: '#949494',
   error: '#f87171',
 };
-
-interface ProfilePageProps {
-  onBack: () => void;
-  onLogout: () => void;
-}
 
 function formatDate(value?: string | null): string {
   if (!value) return '—';
@@ -32,7 +28,11 @@ function formatDate(value?: string | null): string {
   });
 }
 
-export default function ProfilePage({ onBack, onLogout }: ProfilePageProps) {
+interface ProfilePageProps {
+  onToggleSidebar?: () => void;
+}
+
+export default function ProfilePage({ onToggleSidebar }: ProfilePageProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,31 +59,18 @@ export default function ProfilePage({ onBack, onLogout }: ProfilePageProps) {
   }, [loadProfile]);
 
   return (
-    <div className="w-full min-h-screen bg-black text-white flex flex-col">
+    <div className="h-full w-full bg-black text-white flex flex-col">
       <header
-        className="shrink-0 px-6 py-4 flex items-center justify-between"
-        style={{ borderBottom: `1px solid ${COLORS.border}` }}
+        className="shrink-0 px-4 sm:px-6 py-4"
+        style={{
+          borderBottom: `1px solid ${COLORS.border}`,
+          paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+        }}
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={onBack}
-            className="p-2 rounded-xl transition-colors shrink-0"
-            style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = COLORS.text;
-              e.currentTarget.style.borderColor = COLORS.accent;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = COLORS.muted;
-              e.currentTarget.style.borderColor = COLORS.border;
-            }}
-            aria-label="Назад к чатам"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
+        <div className="flex items-center gap-2 min-w-0">
+          {onToggleSidebar && <SidebarToggle onClick={onToggleSidebar} />}
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold truncate" style={{ color: COLORS.text }}>
+            <h1 className="text-lg font-semibold" style={{ color: COLORS.text }}>
               Профиль
             </h1>
             <p className="text-xs mt-0.5" style={{ color: COLORS.muted }}>
@@ -91,26 +78,9 @@ export default function ProfilePage({ onBack, onLogout }: ProfilePageProps) {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl transition-colors"
-          style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = COLORS.text;
-            e.currentTarget.style.borderColor = COLORS.accent;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = COLORS.muted;
-            e.currentTarget.style.borderColor = COLORS.border;
-          }}
-        >
-          <LogOut className="w-4 h-4" />
-          Выйти
-        </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="w-full max-w-md mx-auto">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -144,7 +114,11 @@ export default function ProfilePage({ onBack, onLogout }: ProfilePageProps) {
               >
                 <div
                   className="w-16 h-16 rounded-full flex items-center justify-center text-lg font-semibold mb-4"
-                  style={{ background: '#1f1f1f', color: COLORS.accent, border: `1px solid ${COLORS.border}` }}
+                  style={{
+                    background: '#1f1f1f',
+                    color: COLORS.accent,
+                    border: `1px solid ${COLORS.border}`,
+                  }}
                 >
                   {initialsFromEmail(profile.email)}
                 </div>

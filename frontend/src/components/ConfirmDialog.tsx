@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2 } from 'lucide-react';
 
 const COLORS = {
@@ -55,9 +56,9 @@ export default function ConfirmDialog({
   const confirmBg = variant === 'danger' ? COLORS.error : COLORS.accent;
   const confirmText = variant === 'danger' ? '#1a1a1a' : '#1a1a1a';
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{ background: 'rgba(0, 0, 0, 0.72)' }}
       onClick={() => {
         if (!isLoading) onCancel();
@@ -114,6 +115,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

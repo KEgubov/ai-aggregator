@@ -17,15 +17,21 @@ class GeminiClient:
     async def stream_response(
         self,
         model: str,
-        prompt: str,
+        messages: list[dict],
         retries: int = 3,
         delay: int = 2,
     ) -> AsyncGenerator[str | None | tuple[str, dict[str, int | None]], Any]:
         for attempt in range(retries):
             try:
+                contents = [
+                    {"role": "user", "parts": [{"text": m["content"]}]}
+                    if m["role"] == "user"
+                    else {"role": "model", "parts": [{"text": m["content"]}]}
+                    for m in messages
+                ]
                 stream = await self.client.aio.models.generate_content_stream(
                     model=model,
-                    contents=prompt,
+                    contents=contents,
                 )
                 last_usage = None
                 async for chunk in stream:

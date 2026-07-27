@@ -44,7 +44,6 @@ async def stream_message(
     return StreamingResponse(
         orchestrator.orchestrate_generation(
             model_id=payload.model_id,
-            text=payload.content,
             chat_id=payload.chat_id,
             parent_id=saved_user.message_id,
         ),

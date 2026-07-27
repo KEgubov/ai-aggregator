@@ -16,6 +16,7 @@ class MessageSendDTO(MessageAddDTO):
     model_id: Optional[int] = None
 
 class MessageDTO(MessageAddDTO):
+    content: str
     message_id: int
     path: Optional[str] = None  # для дерева веток
     author_id: Optional[int] = None  # NULL у assistant
