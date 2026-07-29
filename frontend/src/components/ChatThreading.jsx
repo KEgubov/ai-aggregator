@@ -1,7 +1,53 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, CornerDownRight, MoreHorizontal, GitBranch } from 'lucide-react';
-import { formatMessageDate, splitIntoParagraphs } from '../types/message';
+import remarkGfm from 'remark-gfm';
+import hljs from 'highlight.js/lib/core';
+import bash from 'highlight.js/lib/languages/bash';
+import c from 'highlight.js/lib/languages/c';
+import cpp from 'highlight.js/lib/languages/cpp';
+import csharp from 'highlight.js/lib/languages/csharp';
+import css from 'highlight.js/lib/languages/css';
+import go from 'highlight.js/lib/languages/go';
+import java from 'highlight.js/lib/languages/java';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import kotlin from 'highlight.js/lib/languages/kotlin';
+import markdown from 'highlight.js/lib/languages/markdown';
+import python from 'highlight.js/lib/languages/python';
+import rust from 'highlight.js/lib/languages/rust';
+import sql from 'highlight.js/lib/languages/sql';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
+import { Sparkles, CornerDownRight, MoreHorizontal, GitBranch, Check, Copy } from 'lucide-react';
+import { formatMessageDate } from '../types/message';
+
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('sh', bash);
+hljs.registerLanguage('shell', bash);
+hljs.registerLanguage('c', c);
+hljs.registerLanguage('cpp', cpp);
+hljs.registerLanguage('csharp', csharp);
+hljs.registerLanguage('cs', csharp);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('go', go);
+hljs.registerLanguage('java', java);
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('js', javascript);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('kotlin', kotlin);
+hljs.registerLanguage('markdown', markdown);
+hljs.registerLanguage('md', markdown);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('py', python);
+hljs.registerLanguage('rust', rust);
+hljs.registerLanguage('sql', sql);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('ts', typescript);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('html', xml);
+hljs.registerLanguage('yaml', yaml);
+hljs.registerLanguage('yml', yaml);
 
 const COLORS = {
   chatBg: '#191919',
@@ -17,61 +63,275 @@ const COLORS = {
   menuBorder: '#424242',
   menuMuted: '#949494',
   menuText: '#EDEDED',
+  codeBg: '#1a1a1a',
+  codeHeader: '#242424',
+  tableBorder: '#333333',
+  tableHeader: '#1f1f1f',
 };
 
+const MD_STYLES = `
+.md-body {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #d4d4d4;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body p { margin: 0 0 0.9em; }
+.md-body p:last-child { margin-bottom: 0; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+  color: #EDEDED;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.25em 0 0.55em;
+}
+.md-body h1 { font-size: 1.35rem; }
+.md-body h2 { font-size: 1.2rem; }
+.md-body h3 { font-size: 1.05rem; }
+.md-body h4 { font-size: 0.95rem; }
+.md-body ul, .md-body ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.4em;
+}
+.md-body li { margin: 0.25em 0; }
+.md-body li > p { margin: 0.25em 0; }
+.md-body ul { list-style: disc; }
+.md-body ol { list-style: decimal; }
+.md-body strong { color: #EDEDED; font-weight: 600; }
+.md-body em { font-style: italic; }
+.md-body a { color: #fbbf24; text-decoration: underline; text-underline-offset: 2px; }
+.md-body a:hover { color: #ffd27a; }
+.md-body hr {
+  border: none;
+  border-top: 1px solid #2a2a2a;
+  margin: 1.25em 0;
+}
+.md-body blockquote {
+  margin: 0.9em 0;
+  padding: 0.15em 0 0.15em 0.9em;
+  border-left: 3px solid #424242;
+  color: #a3a3a3;
+}
+.md-body blockquote p { margin: 0.35em 0; }
+.md-inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+  background: #1f1f1f;
+  color: #EDEDED;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.12em 0.4em;
+}
+.md-code-block {
+  margin: 0.9em 0;
+  border: 1px solid #333;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1a1a1a;
+}
+.md-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0.45rem 0.75rem;
+  background: #242424;
+  border-bottom: 1px solid #333;
+}
+.md-code-lang {
+  font-size: 12px;
+  color: #949494;
+  text-transform: lowercase;
+}
+.md-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: #949494;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.md-code-copy:hover { background: #333; color: #EDEDED; }
+.md-code-pre {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #E5E5E5;
+  background: transparent;
+}
+.md-code-pre code {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  white-space: pre;
+}
+.md-code-pre .hljs-comment,
+.md-code-pre .hljs-quote { color: #6b7280; font-style: italic; }
+.md-code-pre .hljs-keyword,
+.md-code-pre .hljs-selector-tag,
+.md-code-pre .hljs-literal { color: #c792ea; }
+.md-code-pre .hljs-built_in,
+.md-code-pre .hljs-type,
+.md-code-pre .hljs-params { color: #ffcb6b; }
+.md-code-pre .hljs-string,
+.md-code-pre .hljs-doctag,
+.md-code-pre .hljs-template-tag,
+.md-code-pre .hljs-template-variable { color: #c3e88d; }
+.md-code-pre .hljs-number,
+.md-code-pre .hljs-symbol,
+.md-code-pre .hljs-bullet { color: #f78c6c; }
+.md-code-pre .hljs-title,
+.md-code-pre .hljs-section,
+.md-code-pre .hljs-name,
+.md-code-pre .hljs-selector-id,
+.md-code-pre .hljs-selector-class { color: #82aaff; }
+.md-code-pre .hljs-attr,
+.md-code-pre .hljs-attribute,
+.md-code-pre .hljs-variable,
+.md-code-pre .hljs-property { color: #ffcb6b; }
+.md-code-pre .hljs-meta,
+.md-code-pre .hljs-meta .hljs-keyword { color: #89ddff; }
+.md-code-pre .hljs-function .hljs-title,
+.md-code-pre .hljs-title.function_ { color: #82aaff; }
+.md-code-pre .hljs-subst { color: #E5E5E5; }
+.md-code-pre .hljs-addition { color: #c3e88d; }
+.md-code-pre .hljs-deletion { color: #f07178; }
+.md-code-pre .hljs-regexp { color: #89ddff; }
+.md-table-wrap {
+  margin: 0.9em 0;
+  overflow-x: auto;
+  border: 1px solid #333;
+  border-radius: 12px;
+}
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.md-table th, .md-table td {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #333;
+  text-align: left;
+  vertical-align: top;
+}
+.md-table th {
+  background: #1f1f1f;
+  color: #EDEDED;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md-table tr:last-child td { border-bottom: none; }
+.md-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+`;
+
+function highlightCode(code, language) {
+  try {
+    if (language && hljs.getLanguage(language)) {
+      return hljs.highlight(code, { language }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  } catch {
+    return code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+}
+
+function CodeBlock({ language, children }) {
+  const [copied, setCopied] = useState(false);
+  const code = String(children).replace(/\n$/, '');
+  const highlighted = useMemo(() => highlightCode(code, language), [code, language]);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <div className="md-code-block">
+      <div className="md-code-header">
+        <span className="md-code-lang">{language || 'code'}</span>
+        <button type="button" className="md-code-copy" onClick={() => void handleCopy()}>
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? 'Скопировано' : 'Копировать'}
+        </button>
+      </div>
+      <pre className="md-code-pre">
+        <code
+          className={language ? `language-${language}` : undefined}
+          dangerouslySetInnerHTML={{ __html: highlighted }}
+        />
+      </pre>
+    </div>
+  );
+}
+
 const markdownComponents = {
-  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-  strong: ({ children }) => (
-    <strong className="font-semibold" style={{ color: '#EDEDED' }}>
-      {children}
-    </strong>
-  ),
-  em: ({ children }) => <em className="italic">{children}</em>,
-  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  h1: ({ children }) => (
-    <h1 className="text-lg font-semibold mb-2 mt-1" style={{ color: '#EDEDED' }}>
-      {children}
-    </h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-base font-semibold mb-2 mt-1" style={{ color: '#EDEDED' }}>
-      {children}
-    </h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-sm font-semibold mb-1.5 mt-1" style={{ color: '#EDEDED' }}>
-      {children}
-    </h3>
-  ),
-  code: ({ children }) => (
-    <code
-      className="px-1.5 py-0.5 rounded text-[0.9em]"
-      style={{ background: '#1f1f1f', color: '#EDEDED' }}
-    >
-      {children}
-    </code>
-  ),
-  pre: ({ children }) => (
-    <pre
-      className="my-2 p-3 rounded-xl overflow-x-auto text-sm"
-      style={{ background: '#1f1f1f', color: '#EDEDED' }}
-    >
-      {children}
-    </pre>
-  ),
+  p: ({ children }) => <p>{children}</p>,
+  strong: ({ children }) => <strong>{children}</strong>,
+  em: ({ children }) => <em>{children}</em>,
+  ul: ({ children }) => <ul>{children}</ul>,
+  ol: ({ children }) => <ol>{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  h1: ({ children }) => <h1>{children}</h1>,
+  h2: ({ children }) => <h2>{children}</h2>,
+  h3: ({ children }) => <h3>{children}</h3>,
+  h4: ({ children }) => <h4>{children}</h4>,
+  hr: () => <hr />,
+  blockquote: ({ children }) => <blockquote>{children}</blockquote>,
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.accent }}>
+    <a href={href} target="_blank" rel="noopener noreferrer">
       {children}
     </a>
   ),
+  table: ({ children }) => (
+    <div className="md-table-wrap">
+      <table className="md-table">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead>{children}</thead>,
+  tbody: ({ children }) => <tbody>{children}</tbody>,
+  tr: ({ children }) => <tr>{children}</tr>,
+  th: ({ children }) => <th>{children}</th>,
+  td: ({ children }) => <td>{children}</td>,
+  pre: ({ children }) => <>{children}</>,
+  code: ({ className, children }) => {
+    const match = /language-(\w+)/.exec(className || '');
+    const text = String(children);
+    const isBlock = Boolean(match) || text.includes('\n');
+    if (isBlock) {
+      return <CodeBlock language={match?.[1]}>{children}</CodeBlock>;
+    }
+    return <code className="md-inline-code">{children}</code>;
+  },
 };
 
 function MarkdownText({ text }) {
   return (
-    <div className="text-base leading-relaxed break-words [overflow-wrap:anywhere]" style={{ color: '#d4d4d4' }}>
-      <ReactMarkdown components={markdownComponents}>{text}</ReactMarkdown>
+    <div className="md-body">
+      <style>{MD_STYLES}</style>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -285,6 +545,11 @@ function ResponseFooter({ modelName, createdAt, active, onBranch, userInitials }
             </span>
           </>
         ) : null}
+        {modelName ? (
+          <span className="text-xs truncate max-w-[10rem] sm:max-w-[14rem]" style={{ color: '#8a8a8a' }} title={modelName}>
+            {modelName}
+          </span>
+        ) : null}
         <MessageMoreMenu createdAt={createdAt} branchActive={active} onBranch={onBranch} />
       </div>
     </div>
@@ -313,7 +578,7 @@ function UserBubble({ text, isMe, userInitials }) {
 
 function AIResponse({
   messageId,
-  paragraphs,
+  text,
   modelName,
   createdAt,
   isStreaming,
@@ -325,16 +590,13 @@ function AIResponse({
 }) {
   return (
     <div className="py-1">
-      {paragraphs.map((p) => (
-        <Paragraph
-          key={p.id}
-          id={p.id}
-          text={p.text}
-          activeThread={activeThread}
-          onOpen={onThreadOpen}
-          userInitials={userInitials}
-        />
-      ))}
+      <Paragraph
+        id={`msg-${messageId}`}
+        text={text}
+        activeThread={activeThread}
+        onOpen={onThreadOpen}
+        userInitials={userInitials}
+      />
       {isStreaming && (
         <p className="text-sm pl-9 py-1 animate-pulse" style={{ color: '#8a8a8a' }}>
           генерирует ответ…
@@ -388,12 +650,11 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
           );
         }
 
-        const paragraphs = splitIntoParagraphs(msg.text);
         return (
           <AIResponse
             key={msg.id}
             messageId={msg.id}
-            paragraphs={paragraphs}
+            text={msg.text}
             modelName={msg.modelName}
             createdAt={msg.createdAt}
             isStreaming={msg.isStreaming}

@@ -26,6 +26,7 @@ class AIOrchestrator:
         meta = meta_list[0]
         provider_name = meta.provider_name
         model_name = meta.model_name
+        display_name = meta.display_name
 
         leaf = await self.message_service.get_message(
             parent_id)
@@ -61,7 +62,7 @@ class AIOrchestrator:
                 await self.message_service.save_ai_message(
                     chat_id=chat_id,
                     parent_id=parent_id,
-                    ai_model=model_name,
+                    ai_model=display_name,
                     ai_provider=provider_name,
                     content="".join(parts),
                     metadata=chunk[1],

@@ -11,16 +11,25 @@ class ModelRepository:
     async def meta_for_list_models() -> list[AIModel]:
         async with async_session() as session:
             query = (
-                select(AIModel.model_id, AIModel.display_name, AIModel.description)
+                select(
+                    AIModel.model_id,
+                    AIModel.model_name,
+                    AIModel.display_name,
+                    AIModel.description,
+                )
             )
             result = await session.execute(query)
             return result.all() if result else None
 
     @staticmethod
-    async def meta_for_api(model_id: int) -> Row[tuple[str, str]]:
+    async def meta_for_api(model_id: int) -> Row[tuple[str, str, str]]:
         async with async_session() as session:
             stmt = (
-                select(AIModel.model_name, AIProviders.provider_name)
+                select(
+                    AIModel.model_name,
+                    AIModel.display_name,
+                    AIProviders.provider_name,
+                )
                 .join(AIProviderModel,
                       AIModel.model_id == AIProviderModel.model_id)
                 .join(AIProviders,

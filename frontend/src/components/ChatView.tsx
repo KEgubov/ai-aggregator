@@ -3,12 +3,13 @@ import { Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'l
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
 import SidebarToggle from './SidebarToggle';
-import { fetchModels, findModelByName, type ApiModel } from '../api/models';
+import { fetchModels, findModelByName, resolveModelDisplayName, type ApiModel } from '../api/models';
 import { fetchMessages, sendChatMessage, streamMessage } from '../api/message';
 import {
   getLastServerMessageId,
   mapMessageFromApi,
   stripMentionTokens,
+  type ApiMessage,
   type Message,
 } from '../types/message';
 import type { Chat } from '../types/chat';
@@ -38,6 +39,17 @@ function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiM
   return modelTokens
     .map((name) => findModelByName(apiModels, name))
     .filter((m): m is ApiModel => Boolean(m));
+}
+
+function mapMessagesWithDisplayNames(apiMessages: ApiMessage[], models: ApiModel[]): Message[] {
+  return apiMessages.map((dto) => {
+    const mapped = mapMessageFromApi(dto);
+    if (mapped.type !== 'ai') return mapped;
+    return {
+      ...mapped,
+      modelName: resolveModelDisplayName(models, mapped.modelName),
+    };
+  });
 }
 
 interface ChatViewProps {
@@ -103,9 +115,18 @@ export default function ChatView({
 
     void (async () => {
       try {
-        const apiMessages = await fetchMessages(chat.chat_id);
+        const [apiMessages, models] = await Promise.all([
+          fetchMessages(chat.chat_id),
+          modelsLoadedRef.current && apiModels.length > 0
+            ? Promise.resolve(apiModels)
+            : fetchModels().then((list) => {
+                setApiModels(list);
+                modelsLoadedRef.current = true;
+                return list;
+              }).catch(() => apiModels),
+        ]);
         if (seq !== loadSeqRef.current || sendingRef.current) return;
-        setMessages(apiMessages.map(mapMessageFromApi));
+        setMessages(mapMessagesWithDisplayNames(apiMessages, models));
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
         setMessagesError(err instanceof Error ? err.message : 'Не удалось загрузить сообщения');
@@ -122,9 +143,19 @@ export default function ChatView({
   }, [messages]);
 
   const reloadFromServer = useCallback(async () => {
+    let models = apiModels;
+    if (!modelsLoadedRef.current || models.length === 0) {
+      try {
+        models = await fetchModels();
+        setApiModels(models);
+        modelsLoadedRef.current = true;
+      } catch {
+        models = apiModels;
+      }
+    }
     const apiMessages = await fetchMessages(chat.chat_id);
-    setMessages(apiMessages.map(mapMessageFromApi));
-  }, [chat.chat_id]);
+    setMessages(mapMessagesWithDisplayNames(apiMessages, models));
+  }, [apiModels, chat.chat_id]);
 
   const handleSend = useCallback(
     async (payload: { text: string; modelTokens: string[]; memberTokens: string[] }) => {
