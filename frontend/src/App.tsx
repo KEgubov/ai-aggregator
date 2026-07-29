@@ -8,7 +8,7 @@ import { fetchProfile, logoutUser } from './api/auth';
 import { fetchChats } from './api/chat';
 import { ApiError } from './api/client';
 import type { Chat } from './types/chat';
-import { initialsFromEmail } from './types/user';
+import { initialsFromName } from './types/user';
 
 type AppView = 'loading' | 'auth' | 'chats' | 'conversation' | 'profile';
 
@@ -34,8 +34,8 @@ export default function App() {
   const loadProfile = useCallback(async () => {
     try {
       const profile = await fetchProfile();
-      setUserInitials(initialsFromEmail(profile.email));
-      setUserLabel(profile.email.split('@')[0] || DEFAULT_LABEL);
+      setUserInitials(initialsFromName(profile.username));
+      setUserLabel(profile.username || DEFAULT_LABEL);
     } catch {
       setUserInitials(DEFAULT_INITIALS);
       setUserLabel(DEFAULT_LABEL);
@@ -220,7 +220,13 @@ export default function App() {
             onToggleSidebar={handleToggleSidebar}
           />
         ) : view === 'profile' ? (
-          <ProfilePage onToggleSidebar={handleToggleSidebar} />
+          <ProfilePage
+            onToggleSidebar={handleToggleSidebar}
+            onUsernameChange={(username) => {
+              setUserLabel(username || DEFAULT_LABEL);
+              setUserInitials(initialsFromName(username));
+            }}
+          />
         ) : (
           <ChatHome onStartNewChat={handleStartNewChat} onToggleSidebar={handleToggleSidebar} />
         )}

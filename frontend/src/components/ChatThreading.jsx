@@ -383,6 +383,61 @@ function Dot() {
   );
 }
 
+const GENERATING_DOT_STYLES = `
+@keyframes chat-generating-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.chat-generating-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: #fbbf24;
+  animation: chat-generating-pulse 1.05s ease-in-out infinite;
+}
+`;
+
+function GeneratingDot() {
+  return (
+    <div className="pl-9 py-3" aria-label="Генерирует ответ" role="status">
+      <style>{GENERATING_DOT_STYLES}</style>
+      <span className="chat-generating-dot" />
+    </div>
+  );
+}
+
+function CopyMessageButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const [hover, setHover] = useState(false);
+
+  async function handleCopy() {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* ignore clipboard errors */
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="p-1.5 -m-1 rounded-md transition-colors duration-200"
+      style={{ color: copied || hover ? COLORS.accent : COLORS.iconDefault, lineHeight: 0 }}
+      aria-label={copied ? 'Скопировано' : 'Скопировать'}
+      title={copied ? 'Скопировано' : 'Скопировать'}
+    >
+      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+    </button>
+  );
+}
+
 function Paragraph({ id, text, activeThread, onOpen, userInitials }) {
   const [hoverP, setHoverP] = useState(false);
   const [hoverIcon, setHoverIcon] = useState(false);
@@ -529,7 +584,7 @@ function MessageMoreMenu({ createdAt, branchActive, onBranch }) {
   );
 }
 
-function ResponseFooter({ modelName, createdAt, active, onBranch, userInitials }) {
+function ResponseFooter({ text, modelName, createdAt, active, onBranch, userInitials }) {
   return (
     <div className="flex items-center pl-7 sm:pl-9 min-w-0 flex-wrap gap-y-2">
       <Avatar label={modelName || 'AI'} isAI />
@@ -550,6 +605,7 @@ function ResponseFooter({ modelName, createdAt, active, onBranch, userInitials }
             {modelName}
           </span>
         ) : null}
+        <CopyMessageButton text={text} />
         <MessageMoreMenu createdAt={createdAt} branchActive={active} onBranch={onBranch} />
       </div>
     </div>
@@ -588,28 +644,31 @@ function AIResponse({
   onFooterOpen,
   userInitials,
 }) {
+  const waitingForFirstToken = isStreaming && !text?.trim();
+
   return (
     <div className="py-1">
-      <Paragraph
-        id={`msg-${messageId}`}
-        text={text}
-        activeThread={activeThread}
-        onOpen={onThreadOpen}
-        userInitials={userInitials}
-      />
-      {isStreaming && (
-        <p className="text-sm pl-9 py-1 animate-pulse" style={{ color: '#8a8a8a' }}>
-          генерирует ответ…
-        </p>
+      {waitingForFirstToken ? (
+        <GeneratingDot />
+      ) : (
+        <Paragraph
+          id={`msg-${messageId}`}
+          text={text}
+          activeThread={activeThread}
+          onOpen={onThreadOpen}
+          userInitials={userInitials}
+        />
       )}
-      <ResponseFooter
-        modelName={modelName}
-        createdAt={createdAt}
-        active={footerActive}
-        onBranch={onFooterOpen}
-        userInitials={userInitials}
-      />
-      <div style={{ height: 1, background: COLORS.divider, marginTop: 16 }} />
+      {!isStreaming && (
+        <ResponseFooter
+          text={text}
+          modelName={modelName}
+          createdAt={createdAt}
+          active={footerActive}
+          onBranch={onFooterOpen}
+          userInitials={userInitials}
+        />
+      )}
     </div>
   );
 }

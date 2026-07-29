@@ -16,6 +16,7 @@ interface RegisterResponse {
   status: string;
   user: {
     user_id: number;
+    username: string;
     email: string;
     about_me: string;
   };
@@ -28,6 +29,11 @@ interface LoginResponse {
 interface ProfileResponse {
   status: string;
   profile: UserProfile;
+}
+
+interface ChangeUsernameResponse {
+  status: string;
+  change_name: string;
 }
 
 export async function registerUser(payload: RegisterPayload): Promise<RegisterResponse['user']> {
@@ -52,4 +58,13 @@ export async function logoutUser(): Promise<void> {
 export async function fetchProfile(): Promise<UserProfile> {
   const data = await apiFetch<ProfileResponse>('/user/profile');
   return data.profile;
+}
+
+export async function changeUsername(username: string): Promise<string> {
+  const params = new URLSearchParams({ username });
+  const data = await apiFetch<ChangeUsernameResponse>(
+    `/user/profile/username/change?${params.toString()}`,
+    { method: 'POST' },
+  );
+  return data.change_name;
 }

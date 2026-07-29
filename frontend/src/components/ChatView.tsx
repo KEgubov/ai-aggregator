@@ -17,7 +17,6 @@ import type { Chat } from '../types/chat';
 const MODEL_ICONS: LucideIcon[] = [Sparkles, Zap, Gem, Brain, Rocket, Satellite];
 
 const COLORS = {
-  border: '#424242',
   text: '#EDEDED',
   muted: '#949494',
 };
@@ -271,23 +270,15 @@ export default function ChatView({
   return (
     <div className="h-full w-full bg-black text-white flex flex-col">
       <header
-        className="shrink-0 px-4 sm:px-6 py-4"
-        style={{
-          borderBottom: `1px solid ${COLORS.border}`,
-          paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
-        }}
+        className="shrink-0 px-3 sm:px-4 py-2"
+        style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1 min-w-0">
           {onToggleSidebar && <SidebarToggle onClick={onToggleSidebar} />}
-          <div className="min-w-0">
-            <h1 className="text-base font-semibold truncate" style={{ color: COLORS.text }}>
-              {chat.name}
-            </h1>
-            {chat.description && (
-              <p className="text-xs truncate mt-0.5" style={{ color: COLORS.muted }}>
-                {chat.description}
-              </p>
-            )}
+          <div className="flex items-center min-w-0 px-1.5 py-1">
+            <span className="text-[15px] font-semibold tracking-tight truncate" style={{ color: COLORS.text }}>
+              AI Aggregator
+            </span>
           </div>
         </div>
       </header>
