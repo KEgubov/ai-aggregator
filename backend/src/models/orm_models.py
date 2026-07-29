@@ -4,13 +4,12 @@
 -----------------
 Два независимых типа чатов без связи между собой:
 
-* **Chat** (``chats``) — личный чат вне проекта. Доступ только у владельца
-  (``owner_id``). Участников нет.
+* **Chat** (``chats``) — личный чат вне проекта. Владелец — ``owner_id``,
+  участники — через :class:`ChatMember`.
   Сообщения хранятся в :class:`ChatMessage` (``chat_messages``).
 * **ProjectChat** (``project_chats``) — чат внутри проекта. Проект доступен
   через ``ProjectMember`` → :class:`Project`. Участники конкретного чата —
-  через :class:`ChatMember` (только для проектных чатов). Прямого ``owner_id``
-  у проектного чата нет.
+  через :class:`ProjectChatMember`. Прямого ``owner_id`` у проектного чата нет.
 
 Таблицы сообщений разделены: личные и проектные сообщения не смешиваются.
 """
@@ -54,11 +53,11 @@ class User(Base):
 
     Связь с чатами различается по типу:
 
-    * личные чаты (:class:`Chat`) — напрямую через ``owned_personal_chats``
-      (только владелец);
+    * личные чаты (:class:`Chat`) — владение через ``owned_personal_chats``,
+      участие через ``chat_memberships`` → :class:`ChatMember`;
     * проектные чаты (:class:`ProjectChat`) — через ``project_memberships``
-      → :class:`Project`; участие в чате — через ``chat_memberships``
-      → :class:`ChatMember`.
+      → :class:`Project`; участие в чате — через ``project_chat_memberships``
+      → :class:`ProjectChatMember`.
 
     Attributes:
         user_id: Первичный ключ.
@@ -75,7 +74,7 @@ class User(Base):
     user_id: Mapped[intpk]
     email: Mapped[str_255] = mapped_column(unique=True, nullable=False)
     password: Mapped[str_100] = mapped_column(nullable=False)
-    username: Mapped[Optional[str_100]]
+    username: Mapped[str_100]
     about_me: Mapped[str_20] = mapped_column(nullable=False)
     avatar_url: Mapped[Optional[str]]
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -87,6 +86,9 @@ class User(Base):
 
     project_memberships = relationship("ProjectMember", back_populates="user")
     chat_memberships = relationship("ChatMember", back_populates="user")
+    project_chat_memberships = relationship(
+        "ProjectChatMember", back_populates="user"
+    )
     chat_messages = relationship("ChatMessage", back_populates="author")
     project_chat_messages = relationship("ProjectChatMessage", back_populates="author")
 
@@ -133,14 +135,16 @@ class Project(Base):
     project_chats = relationship(
         "ProjectChat", back_populates="project", cascade="all, delete-orphan"
     )
-    owner = relationship("User", back_populates="owned_projects", foreign_keys=[owner_id])
+    owner = relationship(
+        "User", back_populates="owned_projects", foreign_keys=[owner_id]
+    )
 
 
 class Chat(Base):
     """Личный чат вне проекта.
 
     Не имеет ``project_id`` и не связан с :class:`ProjectChat`.
-    Доступ только у владельца (``owner_id``); участников нет.
+    Владелец — ``owner_id``; участники — через :class:`ChatMember`.
 
     Attributes:
         chat_id: Первичный ключ.
@@ -166,7 +170,12 @@ class Chat(Base):
         DateTime(timezone=True), default=func.now(), onupdate=func.now()
     )
 
-    owner = relationship("User", back_populates="owned_personal_chats", foreign_keys=[owner_id])
+    owner = relationship(
+        "User", back_populates="owned_personal_chats", foreign_keys=[owner_id]
+    )
+    members = relationship(
+        "ChatMember", back_populates="chat", cascade="all, delete-orphan"
+    )
     messages = relationship(
         "ChatMessage",
         back_populates="chat",
@@ -178,7 +187,7 @@ class ProjectChat(Base):
     """Чат внутри проекта.
 
     Принадлежит одному :class:`Project`. Участники чата — через
-    :class:`ChatMember`. Членство в проекте (:class:`ProjectMember`) —
+    :class:`ProjectChatMember`. Членство в проекте (:class:`ProjectMember`) —
     обязательное условие (проверяется на уровне приложения). Поля
     ``owner_id`` нет. С личными чатами (:class:`Chat`) не пересекается.
 
@@ -210,7 +219,7 @@ class ProjectChat(Base):
 
     project = relationship("Project", back_populates="project_chats")
     members = relationship(
-        "ChatMember", back_populates="chat", cascade="all, delete-orphan"
+        "ProjectChatMember", back_populates="chat", cascade="all, delete-orphan"
     )
     messages = relationship(
         "ProjectChatMessage",
@@ -220,6 +229,34 @@ class ProjectChat(Base):
 
 
 class ChatMember(Base):
+    """Участник личного чата.
+
+    Связывает :class:`User` и :class:`Chat`. К проектным чатам
+    (:class:`ProjectChat`) не применяется.
+
+    Attributes:
+        chat_id: Личный чат (FK → ``chats.chat_id``).
+        user_id: Участник.
+        joined_at: Дата присоединения.
+    """
+
+    __tablename__ = "chat_members"
+
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("chats.chat_id"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id"), primary_key=True
+    )
+    joined_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+
+    chat = relationship("Chat", back_populates="members")
+    user = relationship("User", back_populates="chat_memberships")
+
+
+class ProjectChatMember(Base):
     """Участник проектного чата.
 
     Связывает :class:`User` и :class:`ProjectChat`. К личным чатам
@@ -233,7 +270,7 @@ class ChatMember(Base):
         joined_at: Дата присоединения.
     """
 
-    __tablename__ = "chat_members"
+    __tablename__ = "project_chat_members"
 
     chat_id: Mapped[int] = mapped_column(
         ForeignKey("project_chats.chat_id"), primary_key=True
@@ -246,14 +283,14 @@ class ChatMember(Base):
     )
 
     chat = relationship("ProjectChat", back_populates="members")
-    user = relationship("User", back_populates="chat_memberships")
+    user = relationship("User", back_populates="project_chat_memberships")
 
 
 class ProjectMember(Base):
     """Участник проекта.
 
     Даёт доступ к проекту. Участие в конкретном проектном чате
-    оформляется отдельно через :class:`ChatMember`.
+    оформляется отдельно через :class:`ProjectChatMember`.
 
     Attributes:
         project_id: Проект.
@@ -266,9 +303,7 @@ class ProjectMember(Base):
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.project_id"), primary_key=True
     )
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.user_id"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), primary_key=True)
     joined_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
@@ -392,9 +427,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     message_id: Mapped[intpk]
-    chat_id: Mapped[int] = mapped_column(
-        ForeignKey("chats.chat_id"), nullable=False
-    )
+    chat_id: Mapped[int] = mapped_column(ForeignKey("chats.chat_id"), nullable=False)
     parent_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("chat_messages.message_id")
     )

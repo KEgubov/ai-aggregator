@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
@@ -32,3 +32,17 @@ class UserRepository:
             )
             result = await session.execute(query)
             return result.scalar() if result else None
+
+    @staticmethod
+    async def update_username(user_id: int, username: str) -> str:
+        async with async_session() as session:
+            stmt = (
+                update(User)
+                .where(User.user_id == user_id)
+                .values(username=username)
+                .returning(User.username)
+            )
+            result = await session.execute(stmt)
+            user = result.scalar_one()
+            await session.commit()
+            return user

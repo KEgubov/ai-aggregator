@@ -1,4 +1,4 @@
-from backend.src.models.orm_models import Chat
+from backend.src.models.orm_models import Chat, ChatMember
 from backend.src.schemas.chat_schema import ChatDTO, ChatAddDTO
 
 
@@ -13,7 +13,12 @@ class ChatService:
             owner_id=owner_id,
         )
         added_chat = await self.chat_repository.create_chat(chat_model)
-        if added_chat:
+        chat_member = ChatMember(
+            chat_id=added_chat.chat_id,
+            user_id=owner_id,
+        )
+        create_member = await self.chat_repository.added_user_in_members(chat_member)
+        if create_member and added_chat:
             result_dto = ChatDTO.model_validate(added_chat, from_attributes=True)
             return result_dto
         return None

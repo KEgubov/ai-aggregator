@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.src.api.dependency import get_current_user, get_chat_service
 from backend.src.schemas.chat_schema import ChatAddDTO
-from backend.src.service import chat_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -41,3 +40,11 @@ async def delete_chat(
     if not response:
         raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok"}
+
+@router.get("/members")
+async def get_members(
+
+    chat_service=Depends(get_chat_service),
+    current_user=Depends(get_current_user),
+):
+    pass

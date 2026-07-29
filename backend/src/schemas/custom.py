@@ -17,6 +17,7 @@ class AIModelMetaDTO(BaseModel):
 
 class UserProfileDTO(BaseModel):
     user_id: int
+    username: str = Field(max_length=100, description='Имя пользователя')
     email: EmailStr = Field(max_length=255, description="Email")
     about_me: str = Field(max_length=20, description="Краткое описание профиля")
     created_at: Optional[datetime] = Field(description="Дата создания")

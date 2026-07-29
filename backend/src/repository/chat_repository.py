@@ -1,8 +1,8 @@
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
-from backend.src.models.orm_models import Chat
+from backend.src.models.orm_models import Chat, ChatMember
 from backend.src.service.exceptions import DuplicateError
 
 
@@ -45,3 +45,11 @@ class ChatRepository:
             await session.delete(chat)
             await session.commit()
             return True
+
+    @staticmethod
+    async def added_user_in_members(chat_member: ChatMember) -> ChatMember:
+        async with async_session() as session:
+            session.add(chat_member)
+            await session.commit()
+            await session.refresh(chat_member)
+            return chat_member

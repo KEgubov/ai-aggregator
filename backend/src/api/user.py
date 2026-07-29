@@ -16,3 +16,14 @@ async def get_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="User not found")
     return {"status": "ok", "profile": profile}
+
+@router.put('/profile/username/change')
+async def change_username(
+    username: str,
+    user_service: UserService = Depends(get_user_service),
+    current_user: CurrentUserDTO = Depends(get_current_user)
+):
+    change_name = await user_service.change_username(current_user.user_id, username)
+    if not change_name:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "ok", "change_name": change_name}
