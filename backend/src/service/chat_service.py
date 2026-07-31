@@ -3,10 +3,13 @@ from backend.src.schemas.chat_schema import ChatDTO, ChatAddDTO
 
 
 class ChatService:
+    """Бизнес-логика личных чатов: создание, список, удаление."""
+
     def __init__(self, chat_repository):
         self.chat_repository = chat_repository
 
     async def validate_create_chat(self, chat: ChatAddDTO, owner_id: int) -> ChatDTO | None:
+        """Создаёт чат и добавляет владельца в участники."""
         chat_model = Chat(
             name=chat.name,
             description=chat.description,
@@ -24,6 +27,7 @@ class ChatService:
         return None
 
     async def validate_personal_chats_from_user(self, user_id: int) -> list[ChatDTO] | None:
+        """Возвращает личные чаты пользователя в виде списка DTO."""
         personal_chats = await self.chat_repository.get_personal_chats_from_user(user_id)
         if personal_chats:
             result_dtos = [
@@ -34,6 +38,7 @@ class ChatService:
         return None
 
     async def response_delete_chat(self, chat_id: int, user_id: int) -> bool:
+        """Удаляет чат владельца; True при успехе, False если чат не найден."""
         response = await self.chat_repository.delete_chat_in_db(chat_id, user_id)
         if not response:
             return False

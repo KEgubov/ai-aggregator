@@ -15,6 +15,7 @@ router = APIRouter(prefix="/user", tags=["User"])
 async def user_register(
     user: UserAddDTO, user_service: UserService = Depends(get_user_service)
 ):
+    """Регистрирует нового пользователя."""
     user_add = await user_service.user_validate(user)
     return {"status": "ok", "user": user_add}
 
@@ -26,6 +27,7 @@ async def login(
     auth_service: AuthService = Depends(get_auth_service),
     security: AuthX = Depends(get_security),
 ) -> dict[str, str]:
+    """Аутентифицирует пользователя и выставляет JWT в cookie."""
     user = await auth_service.resp_authenticate_user(creds)
     if not user:
         raise HTTPException(status_code=401, detail="Incorrect login or password")
@@ -36,5 +38,6 @@ async def login(
 
 @router.post("/logout")
 async def logout(response: Response, security: AuthX = Depends(get_security)):
+    """Завершает сессию: удаляет auth-cookie."""
     security.unset_cookies(response)
     return {"status": "ok"}

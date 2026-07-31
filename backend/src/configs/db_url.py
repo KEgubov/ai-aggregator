@@ -4,6 +4,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 class DBSettings(BaseSettings):
+    """Параметры подключения к PostgreSQL из .env."""
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         extra="ignore"
@@ -17,6 +19,7 @@ class DBSettings(BaseSettings):
 
     @property
     def DATABASE_URL(self):
+        """Собирает URL для async SQLAlchemy (asyncpg)."""
         return (
             f"postgresql+asyncpg://"
             f"{self.DB_USER}:{self.DB_PASS}"

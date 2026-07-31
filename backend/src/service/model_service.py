@@ -5,10 +5,13 @@ from backend.src.schemas.message_schema import MessageAddDTO
 logger = logging.getLogger("app")
 
 class ModelService:
+    """Бизнес-логика каталога AI-моделей и привязки модели к чату."""
+
     def __init__(self, model_repository):
         self.model_repository = model_repository
 
     async def list_model_validate(self) -> list[AIModelMetaDTO] | None:
+        """Возвращает список моделей с метаданными для UI или None."""
         all_models = await self.model_repository.meta_for_list_models()
         if all_models:
             result_dto = [
@@ -20,6 +23,7 @@ class ModelService:
 
     async def get_meta_for_api(self, model_id: int) -> list[
                                                            ModelProviderResponse] | None:
+        """Возвращает имя модели и провайдера для вызова внешнего API."""
         model_name = await self.model_repository.meta_for_api(model_id)
         if model_name:
             result_dto = [
@@ -31,6 +35,7 @@ class ModelService:
     async def link_model(
         self, chat_id: int, model_id: int, owner_id: int
     ) -> bool:
+        """Привязывает display_name модели к чату владельца."""
         linked_model = await self.model_repository.save_model_for_the_chat(
             chat_id, model_id, owner_id
         )

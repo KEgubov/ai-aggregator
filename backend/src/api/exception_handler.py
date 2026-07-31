@@ -5,6 +5,7 @@ from backend.src.service.exceptions import DuplicateError
 
 
 def duplicate_error_handler(request: Request, exc: DuplicateError) -> Response:
+    """Обрабатывает DuplicateError: отвечает HTTP 409 с кодом и сообщением."""
     return JSONResponse(
         status_code=409,
         content={

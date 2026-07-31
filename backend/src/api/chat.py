@@ -12,6 +12,7 @@ async def create_chat(
     chat_service=Depends(get_chat_service),
     current_user=Depends(get_current_user),
 ):
+    """Создаёт личный чат и добавляет текущего пользователя в участники."""
     chat_add = await chat_service.validate_create_chat(
         chat, owner_id=current_user.user_id
     )
@@ -22,6 +23,7 @@ async def create_chat(
 async def get_chats(
     chat_service=Depends(get_chat_service), current_user=Depends(get_current_user)
 ):
+    """Возвращает список личных чатов текущего пользователя."""
     chats = await chat_service.validate_personal_chats_from_user(
         user_id=current_user.user_id
     )
@@ -36,6 +38,7 @@ async def delete_chat(
     chat_service=Depends(get_chat_service),
     current_user=Depends(get_current_user),
 ):
+    """Удаляет личный чат, если текущий пользователь является его владельцем."""
     response = await chat_service.response_delete_chat(chat_id=chat_id, user_id=current_user.user_id)
     if not response:
         raise HTTPException(status_code=404, detail="Not found")
@@ -47,4 +50,5 @@ async def get_members(
     chat_service=Depends(get_chat_service),
     current_user=Depends(get_current_user),
 ):
+    """Возвращает участников чата (пока не реализовано)."""
     pass

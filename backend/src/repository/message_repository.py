@@ -7,9 +7,11 @@ from backend.src.models.orm_models import ChatMessage
 
 
 class MessageRepository:
+    """Доступ к БД для сообщений чата и ltree-путей веток."""
 
     @staticmethod
     async def get_message_by_id(parent_id: int) -> ChatMessage:
+        """Возвращает сообщение по message_id или None."""
         async with async_session() as session:
             query = (
                 select(ChatMessage)
@@ -20,6 +22,7 @@ class MessageRepository:
 
     @staticmethod
     async def create_message(message: ChatMessage) -> ChatMessage:
+        """Сохраняет новое сообщение и возвращает его с заполненным id."""
         async with async_session() as session:
             session.add(message)
             await session.commit()
@@ -28,6 +31,7 @@ class MessageRepository:
 
     @staticmethod
     async def update_path(message_id: int, path: str) -> ChatMessage:
+        """Обновляет ltree-path сообщения и возвращает актуальную запись."""
         async with async_session() as session:
             query = (
                 update(ChatMessage)
@@ -43,6 +47,7 @@ class MessageRepository:
 
     @staticmethod
     async def get_all_messages(chat_id: int) -> list[ChatMessage]:
+        """Возвращает все сообщения чата в порядке message_id."""
         async with async_session() as session:
             query = (
                 select(ChatMessage)
@@ -54,6 +59,7 @@ class MessageRepository:
 
     @staticmethod
     async def get_branch_messages(chat_id: int, leaf_path: str) -> list[ChatMessage]:
+        """Возвращает предков leaf_path (ветку) в порядке глубины ltree."""
         async with async_session() as session:
             query = (
                 select(ChatMessage)

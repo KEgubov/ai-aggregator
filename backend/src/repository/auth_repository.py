@@ -9,9 +9,11 @@ from backend.src.schemas.custom import LoginData
 
 
 class AuthRepository:
+    """Доступ к БД для аутентификации пользователей."""
 
     @staticmethod
     async def authenticate_user(creds: LoginData) -> Any | None:
+        """Проверяет email/пароль; при успехе обновляет last_seen_at и возвращает user_id."""
         async with async_session() as session:
             query = select(User.user_id).where(
                 User.email == creds.email, and_(User.password == creds.password)
@@ -28,4 +30,3 @@ class AuthRepository:
                 await session.commit()
                 return user
             return None
-

@@ -9,6 +9,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 
 class AuthXSettings(BaseSettings):
+    """Настройки JWT/cookie для AuthX."""
+
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore")
 
     JWT_SECRET_KEY: str
@@ -16,6 +18,7 @@ class AuthXSettings(BaseSettings):
 
     @property
     def config(self) -> AuthXConfig:
+        """Собирает AuthXConfig: cookie-токен на 24 часа без CSRF."""
         return AuthXConfig(
             JWT_SECRET_KEY=self.JWT_SECRET_KEY,
             JWT_ACCESS_COOKIE_NAME=self.JWT_ACCESS_COOKIE_NAME,

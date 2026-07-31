@@ -13,9 +13,13 @@ class MessageAddDTO(BaseModel):
     context_text_snippet: Optional[str] = None
 
 class MessageSendDTO(MessageAddDTO):
+    """Запрос отправки сообщения; при model_id запускается генерация ответа AI."""
+
     model_id: Optional[int] = None
 
 class MessageDTO(MessageAddDTO):
+    """Сообщение чата с id, путём ветки и метаданными автора/модели."""
+
     content: str
     message_id: int
     path: Optional[str] = None  # для дерева веток
@@ -30,4 +34,5 @@ class MessageDTO(MessageAddDTO):
     @field_validator("path", mode="before")
     @classmethod
     def normalize_path(cls, value):
+        """Приводит ltree/path к строке для сериализации."""
         return str(value) if value is not None else value

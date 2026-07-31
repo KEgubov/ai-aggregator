@@ -4,10 +4,13 @@ from backend.src.schemas.message_schema import MessageAddDTO, MessageDTO
 
 
 class MessageService:
+    """Бизнес-логика сообщений: сохранение, ветки (ltree), история для генерации."""
+
     def __init__(self, message_repository) -> None:
         self.message_repository = message_repository
 
     async def get_message(self, parent_id: int) -> MessageDTO | None:
+        """Возвращает сообщение по id или None."""
         message = await self.message_repository.get_message_by_id(parent_id)
         if not message:
             return None
@@ -97,6 +100,7 @@ class MessageService:
         return MessageDTO.model_validate(added_message, from_attributes=True)
 
     async def validate_all_messages(self, chat_id: int) -> MessageListResponse:
+        """Возвращает все сообщения чата в обёртке MessageListResponse."""
         all_messages = await self.message_repository.get_all_messages(chat_id)
         return MessageListResponse(
             messages=[
@@ -108,6 +112,7 @@ class MessageService:
     async def get_history_for_generation(
         self, chat_id: int, leaf_path: str
     ) -> list[dict]:
+        """Собирает историю ветки до leaf_path в формате role/content для API моделей."""
         rows = await self.message_repository.get_branch_messages(chat_id, leaf_path)
         history = []
         for row in rows:

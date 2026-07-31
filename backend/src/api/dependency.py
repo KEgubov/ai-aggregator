@@ -10,15 +10,18 @@ from backend.src.service.model_service import ModelService
 from backend.src.service.user_service import UserService
 
 def get_security(request: Request) -> AuthX:
+    """Возвращает экземпляр AuthX из состояния приложения."""
     return request.app.state.security
 
 async def get_token_payload(
     request: Request,
     security: AuthX = Depends(get_security),
 ) -> TokenPayload:
+    """Извлекает и проверяет JWT access-token из запроса."""
     return await security.access_token_required(request)
 
 def get_ai_orchestrator(request: Request) -> AIOrchestrator:
+    """Создаёт оркестратор генерации ответов AI для текущего запроса."""
     return AIOrchestrator(
         model_service=request.app.state.model_service,
         message_service=request.app.state.message_service,
@@ -27,24 +30,30 @@ def get_ai_orchestrator(request: Request) -> AIOrchestrator:
     )
 
 def get_auth_service(request: Request) -> AuthService:
+    """Возвращает сервис аутентификации из состояния приложения."""
     return request.app.state.auth_service
 
 def get_user_service(request: Request) -> UserService:
+    """Возвращает сервис пользователей из состояния приложения."""
     return request.app.state.user_service
 
 def get_model_service(request: Request) -> ModelService:
+    """Возвращает сервис моделей AI из состояния приложения."""
     return request.app.state.model_service
 
 def get_chat_service(request: Request) -> ChatService:
+    """Возвращает сервис чатов из состояния приложения."""
     return request.app.state.chat_service
 
 def get_message_service(request: Request) -> MessageService:
+    """Возвращает сервис сообщений из состояния приложения."""
     return request.app.state.message_service
 
 async def get_current_user(
     payload: TokenPayload = Depends(get_token_payload),
     user_service: UserService = Depends(get_user_service),
 ) -> CurrentUserDTO:
+    """Возвращает текущего пользователя по ``sub`` из JWT."""
     user = await user_service.validate_current_user(user_id=int(payload.sub))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

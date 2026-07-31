@@ -4,6 +4,7 @@ from pythonjsonlogger.json import JsonFormatter
 
 
 def setup_logging(service_name: str, level: int = logging.INFO):
+    """Настраивает JSON-логирование в stdout (идемпотентно)."""
     root_logger = logging.getLogger()
     if root_logger.hasHandlers():
         return

@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiClient:
+    """Клиент Google Gemini: стриминг и генерация с повторными попытками."""
+
     def __init__(self):
+        """Инициализирует GenAI-клиент по ключу из настроек."""
         self.client = genai.Client(api_key=api_settings.GEMINI_API)
 
     async def stream_response(
@@ -21,6 +24,7 @@ class GeminiClient:
         retries: int = 3,
         delay: int = 2,
     ) -> AsyncGenerator[str | None | tuple[str, dict[str, int | None]], Any]:
+        """Стримит ответ модели; в конце отдаёт кортеж ``("usage", meta)``."""
         for attempt in range(retries):
             try:
                 contents = [
@@ -78,6 +82,7 @@ class GeminiClient:
         retries: int = 3,
         delay: int = 2,
     ) -> str | None:
+        """Собирает полный ответ модели из стрима (без стриминга наружу)."""
         parts: list[str] = []
         async for chunk in self.stream_response(
             model=model, prompt=prompt, retries=retries, delay=delay

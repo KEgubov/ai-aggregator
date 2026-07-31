@@ -12,6 +12,7 @@ async def get_profile(
     user_service: UserService = Depends(get_user_service),
     current_user: CurrentUserDTO = Depends(get_current_user)
 ):
+    """Возвращает профиль текущего авторизованного пользователя."""
     profile = await user_service.get_user_profile(current_user.user_id)
     if not profile:
         raise HTTPException(status_code=404, detail="User not found")
@@ -23,6 +24,7 @@ async def change_username(
     user_service: UserService = Depends(get_user_service),
     current_user: CurrentUserDTO = Depends(get_current_user)
 ):
+    """Изменяет имя текущего пользователя."""
     change_name = await user_service.change_username(current_user.user_id, username)
     if not change_name:
         raise HTTPException(status_code=404, detail="User not found")

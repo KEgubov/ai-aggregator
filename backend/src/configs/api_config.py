@@ -4,6 +4,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 class APISettings(BaseSettings):
+    """Настройки API-ключей внешних провайдеров (Gemini, Groq)."""
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         extra="ignore"

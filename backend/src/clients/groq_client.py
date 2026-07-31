@@ -10,11 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class GroqClient:
+    """Асинхронный клиент Groq Chat Completions."""
 
     def __init__(self):
+        """Инициализирует AsyncGroq по ключу из настроек."""
         self.client = AsyncGroq(api_key=api_settings.GROQ_API, max_retries=3)
 
     async def generate_response(self, model: str, prompt: str) -> str:
+        """Возвращает полный ответ модели на один user-prompt."""
         response = await self.client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model=model,
@@ -24,6 +27,7 @@ class GroqClient:
     async def stream_chat(
         self, model: str, messages: list[dict]
     ) -> AsyncIterator[str | tuple[str, dict[str, Any]]]:
+        """Стримит чат; в конце отдаёт ``("usage", meta)`` с токенами."""
         try:
             stream = await self.client.chat.completions.create(
                 messages=messages,

@@ -4,10 +4,13 @@ from backend.src.schemas.user_schema import UserAddDTO, UserDTO
 
 
 class UserService:
+    """Бизнес-логика пользователей: регистрация, профиль, смена имени."""
+
     def __init__(self, user_repository):
         self.user_repository = user_repository
 
     async def user_validate(self, user: UserAddDTO) -> UserDTO | None:
+        """Регистрирует пользователя; username берётся из локальной части email."""
         username = user.email.split("@", 1)[0]
         model_user = User(
             email=user.email,
@@ -22,6 +25,7 @@ class UserService:
         return None
 
     async def validate_current_user(self, user_id: int) -> CurrentUserDTO | None:
+        """Возвращает DTO текущего пользователя по id или None."""
         current_user = await self.user_repository.get_current_user_by_id(user_id)
         if current_user:
             result_dto = CurrentUserDTO.model_validate(current_user, from_attributes=True)
@@ -29,6 +33,7 @@ class UserService:
         return None
 
     async def get_user_profile(self, user_id: int) -> UserProfileDTO | None:
+        """Возвращает профиль пользователя по id или None."""
         profile = await self.user_repository.get_current_user_by_id(user_id)
         if profile:
             result_dto = UserProfileDTO.model_validate(profile, from_attributes=True)
@@ -36,6 +41,6 @@ class UserService:
         return None
 
     async def change_username(self, user_id: int, username: str) -> str:
+        """Обновляет username пользователя и возвращает новое значение."""
         new_username = await self.user_repository.update_username(user_id, username)
         return new_username
-

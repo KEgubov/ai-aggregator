@@ -7,9 +7,11 @@ from backend.src.service.exceptions import DuplicateError
 
 
 class UserRepository:
+    """Доступ к БД для пользователей."""
 
     @staticmethod
     async def create_user_in_db(user: User) -> User | None:
+        """Создаёт пользователя; при дубликате поднимает DuplicateError."""
         async with async_session() as session:
             try:
                 session.add(user)
@@ -25,6 +27,7 @@ class UserRepository:
 
     @staticmethod
     async def get_current_user_by_id(user_id: int) -> User:
+        """Возвращает пользователя по id или None."""
         async with async_session() as session:
             query = (
                 select(User)
@@ -35,6 +38,7 @@ class UserRepository:
 
     @staticmethod
     async def update_username(user_id: int, username: str) -> str:
+        """Обновляет username и возвращает новое значение."""
         async with async_session() as session:
             stmt = (
                 update(User)

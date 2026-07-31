@@ -57,6 +57,7 @@ async def init_clients(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Жизненный цикл приложения: инициализация зависимостей при старте."""
     await init_security(app)
     await init_services(app)
     await init_clients(app)

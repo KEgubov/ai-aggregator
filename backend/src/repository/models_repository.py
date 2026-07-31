@@ -6,9 +6,11 @@ from backend.src.models.orm_models import AIModel, Chat, AIProviders, \
 
 
 class ModelRepository:
+    """Доступ к БД для каталога AI-моделей и привязки модели к чату."""
 
     @staticmethod
     async def meta_for_list_models() -> list[AIModel]:
+        """Возвращает метаданные моделей для списка в UI."""
         async with async_session() as session:
             query = (
                 select(
@@ -23,6 +25,7 @@ class ModelRepository:
 
     @staticmethod
     async def meta_for_api(model_id: int) -> Row[tuple[str, str, str]]:
+        """Возвращает model_name, display_name и provider_name для вызова API."""
         async with async_session() as session:
             stmt = (
                 select(
@@ -43,6 +46,7 @@ class ModelRepository:
     async def save_model_for_the_chat(
         chat_id: int, model_id: int, owner_id: int
     ) -> bool:
+        """Добавляет display_name модели в ai_models чата владельца (без дублей)."""
         async with async_session() as session:
             query = (
                 select(AIModel.display_name)

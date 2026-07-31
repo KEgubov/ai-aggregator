@@ -28,6 +28,7 @@ async def stream_message(
     message_service: MessageService = Depends(get_message_service),
     current_user: CurrentUserDTO = Depends(get_current_user),
 ) -> StreamingResponse | dict:
+    """Сохраняет сообщение пользователя и при наличии model_id стримит ответ AI."""
     saved_user = await message_service.validate_save_message(
         payload, current_user.user_id
     )
@@ -57,5 +58,6 @@ async def get_messages(
     message_service: MessageService = Depends(get_message_service),
     current_user: CurrentUserDTO = Depends(get_current_user),
 ):
+    """Возвращает все сообщения указанного чата."""
     all_message = await message_service.validate_all_messages(chat_id)
     return {"status": "ok", "messages": all_message.messages}

@@ -7,9 +7,11 @@ from backend.src.service.exceptions import DuplicateError
 
 
 class ChatRepository:
+    """Доступ к БД для личных чатов и их участников."""
 
     @staticmethod
     async def create_chat(chat: Chat):
+        """Создаёт чат; при нарушении уникальности поднимает DuplicateError."""
         async with async_session() as session:
             try:
                 session.add(chat)
@@ -25,6 +27,7 @@ class ChatRepository:
 
     @staticmethod
     async def get_personal_chats_from_user(user_id: int):
+        """Возвращает все личные чаты, где пользователь — владелец."""
         async with async_session() as session:
             query = (
                 select(Chat)
@@ -35,6 +38,7 @@ class ChatRepository:
 
     @staticmethod
     async def delete_chat_in_db(chat_id: int, user_id: int) -> bool:
+        """Удаляет чат по id, если user_id — владелец; иначе False."""
         async with async_session() as session:
             chat = await session.scalar(
                 select(Chat).where(Chat.chat_id == chat_id,
@@ -48,6 +52,7 @@ class ChatRepository:
 
     @staticmethod
     async def added_user_in_members(chat_member: ChatMember) -> ChatMember:
+        """Добавляет запись участника чата и возвращает её."""
         async with async_session() as session:
             session.add(chat_member)
             await session.commit()
