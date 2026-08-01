@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import AuthForm from './components/AuthForm';
 import ChatHome from './components/ChatHome';
 import ChatView from './components/ChatView';
-import ProfilePage from './components/ProfilePage';
+import ProfileModal from './components/ProfileModal';
 import Sidebar from './components/Sidebar';
 import { fetchProfile, logoutUser } from './api/auth';
 import { fetchChats } from './api/chat';
@@ -10,7 +10,7 @@ import { ApiError } from './api/client';
 import type { Chat } from './types/chat';
 import { initialsFromName } from './types/user';
 
-type AppView = 'loading' | 'auth' | 'chats' | 'conversation' | 'profile';
+type AppView = 'loading' | 'auth' | 'chats' | 'conversation';
 
 const LOGOUT_FLAG = 'agregation_logged_out';
 const DEFAULT_INITIALS = 'Я';
@@ -30,6 +30,7 @@ export default function App() {
   const [userLabel, setUserLabel] = useState(DEFAULT_LABEL);
   const [openCreateRequest, setOpenCreateRequest] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(() => isDesktopViewport());
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -110,6 +111,7 @@ export default function App() {
     setActiveChat(null);
     setUserInitials(DEFAULT_INITIALS);
     setUserLabel(DEFAULT_LABEL);
+    setProfileOpen(false);
     setView('auth');
   }, []);
 
@@ -152,7 +154,7 @@ export default function App() {
   }, []);
 
   const handleOpenProfile = useCallback(() => {
-    setView('profile');
+    setProfileOpen(true);
     closeSidebarOnMobile();
   }, [closeSidebarOnMobile]);
 
@@ -201,7 +203,7 @@ export default function App() {
         activeChatId={activeChat?.chat_id ?? null}
         userInitials={userInitials}
         userLabel={userLabel}
-        profileActive={view === 'profile'}
+        profileActive={profileOpen}
         openCreateRequest={openCreateRequest}
         onClose={() => setSidebarOpen(false)}
         onSelectChat={handleSelectChat}
@@ -220,18 +222,19 @@ export default function App() {
             userLabel={userLabel}
             onToggleSidebar={handleToggleSidebar}
           />
-        ) : view === 'profile' ? (
-          <ProfilePage
-            onToggleSidebar={handleToggleSidebar}
-            onUsernameChange={(username) => {
-              setUserLabel(username || DEFAULT_LABEL);
-              setUserInitials(initialsFromName(username));
-            }}
-          />
         ) : (
           <ChatHome onStartNewChat={handleStartNewChat} onToggleSidebar={handleToggleSidebar} />
         )}
       </main>
+
+      <ProfileModal
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        onUsernameChange={(username) => {
+          setUserLabel(username || DEFAULT_LABEL);
+          setUserInitials(initialsFromName(username));
+        }}
+      />
     </div>
   );
 }

@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Check, Loader2, Mail, Pencil, UserRound } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Check, CalendarDays, Clock3, Loader2, Mail, Pencil, UserRound } from 'lucide-react';
 import { changeUsername, fetchProfile } from '../api/auth';
 import { ApiError } from '../api/client';
 import { initialsFromName, type UserProfile } from '../types/user';
-import SidebarToggle from './SidebarToggle';
 
 const COLORS = {
   box: '#2D2D2D',
   border: '#424242',
   card: '#252525',
+  nested: '#1f1f1f',
   accent: '#F5A623',
   text: '#EDEDED',
   muted: '#949494',
   error: '#f87171',
+  modal: '#212121',
 };
 
 const USERNAME_MAX = 100;
@@ -30,12 +32,13 @@ function formatDate(value?: string | null): string {
   });
 }
 
-interface ProfilePageProps {
-  onToggleSidebar?: () => void;
+interface ProfileModalProps {
+  open: boolean;
+  onClose: () => void;
   onUsernameChange?: (username: string) => void;
 }
 
-export default function ProfilePage({ onToggleSidebar, onUsernameChange }: ProfilePageProps) {
+export default function ProfileModal({ open, onClose, onUsernameChange }: ProfileModalProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,8 +68,30 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
   }, []);
 
   useEffect(() => {
+    if (!open) return;
+    setIsEditingName(false);
+    setNameError(null);
+    setNameSuccess(null);
     void loadProfile();
-  }, [loadProfile]);
+  }, [open, loadProfile]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isSavingName) {
+        onClose();
+      }
+    }
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open, isSavingName, onClose]);
 
   async function handleSaveUsername(e: FormEvent) {
     e.preventDefault();
@@ -120,32 +145,54 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
     setIsEditingName(false);
   }
 
-  return (
-    <div className="h-full w-full bg-black text-white flex flex-col">
-      <header
-        className="shrink-0 px-4 sm:px-6 py-4"
-        style={{
-          borderBottom: `1px solid ${COLORS.border}`,
-          paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
-        }}
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          {onToggleSidebar && <SidebarToggle onClick={onToggleSidebar} />}
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold" style={{ color: COLORS.text }}>
-              Профиль
-            </h1>
-            <p className="text-xs mt-0.5" style={{ color: COLORS.muted }}>
-              Данные вашего аккаунта
-            </p>
-          </div>
-        </div>
-      </header>
+  function handleBackdropClose() {
+    if (isSavingName) return;
+    onClose();
+  }
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="w-full max-w-md mx-auto">
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backdropFilter: 'blur(1px)',
+        WebkitBackdropFilter: 'blur(1px)',
+      }}
+      onClick={handleBackdropClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-modal-title"
+        className="w-full max-w-md max-h-[min(90dvh,760px)] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+        style={{
+          background: COLORS.modal,
+          border: `1px solid ${COLORS.border}`,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          className="shrink-0 px-5 sm:px-6 py-4"
+          style={{ borderBottom: `1px solid ${COLORS.border}` }}
+        >
+          <h2
+            id="profile-modal-title"
+            className="text-lg font-semibold"
+            style={{ color: COLORS.text }}
+          >
+            Профиль
+          </h2>
+          <p className="text-xs mt-0.5" style={{ color: COLORS.muted }}>
+            Данные вашего аккаунта
+          </p>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5">
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Loader2 className="w-6 h-6 animate-spin" style={{ color: COLORS.accent }} />
               <p className="text-sm" style={{ color: COLORS.muted }}>
                 Загрузка профиля…
@@ -177,7 +224,7 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
                 <div
                   className="w-16 h-16 rounded-full flex items-center justify-center text-lg font-semibold mb-4"
                   style={{
-                    background: '#1f1f1f',
+                    background: COLORS.nested,
                     color: COLORS.accent,
                     border: `1px solid ${COLORS.border}`,
                   }}
@@ -196,7 +243,7 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
                       disabled={isSavingName}
                       className="w-full rounded-xl px-3 py-2 text-center text-lg font-semibold outline-none"
                       style={{
-                        background: '#1f1f1f',
+                        background: COLORS.nested,
                         color: COLORS.text,
                         border: `1px solid ${COLORS.border}`,
                       }}
@@ -229,9 +276,9 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
                   </form>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-semibold" style={{ color: COLORS.text }}>
+                    <h3 className="text-xl font-semibold" style={{ color: COLORS.text }}>
                       {profile.username}
-                    </h2>
+                    </h3>
                     <button
                       type="button"
                       onClick={startEditingName}
@@ -282,7 +329,7 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
                 >
                   <span
                     className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: '#1f1f1f', color: COLORS.accent }}
+                    style={{ background: COLORS.nested, color: COLORS.accent }}
                   >
                     <Mail className="w-4 h-4" />
                   </span>
@@ -302,7 +349,7 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
                 >
                   <span
                     className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: '#1f1f1f', color: COLORS.accent }}
+                    style={{ background: COLORS.nested, color: COLORS.accent }}
                   >
                     <UserRound className="w-4 h-4" />
                   </span>
@@ -317,30 +364,47 @@ export default function ProfilePage({ onToggleSidebar, onUsernameChange }: Profi
                 </div>
 
                 <div
-                  className="px-4 py-3.5"
+                  className="px-4 py-3.5 flex items-start gap-3"
                   style={{ borderBottom: `1px solid ${COLORS.border}` }}
                 >
-                  <p className="text-xs" style={{ color: COLORS.muted }}>
-                    Дата регистрации
-                  </p>
-                  <p className="text-sm mt-0.5" style={{ color: COLORS.text }}>
-                    {formatDate(profile.created_at)}
-                  </p>
+                  <span
+                    className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: COLORS.nested, color: COLORS.accent }}
+                  >
+                    <CalendarDays className="w-4 h-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs" style={{ color: COLORS.muted }}>
+                      Дата регистрации
+                    </p>
+                    <p className="text-sm mt-0.5" style={{ color: COLORS.text }}>
+                      {formatDate(profile.created_at)}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="px-4 py-3.5">
-                  <p className="text-xs" style={{ color: COLORS.muted }}>
-                    Последняя активность
-                  </p>
-                  <p className="text-sm mt-0.5" style={{ color: COLORS.text }}>
-                    {formatDate(profile.last_seen_at)}
-                  </p>
+                <div className="px-4 py-3.5 flex items-start gap-3">
+                  <span
+                    className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: COLORS.nested, color: COLORS.accent }}
+                  >
+                    <Clock3 className="w-4 h-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs" style={{ color: COLORS.muted }}>
+                      Последняя активность
+                    </p>
+                    <p className="text-sm mt-0.5" style={{ color: COLORS.text }}>
+                      {formatDate(profile.last_seen_at)}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

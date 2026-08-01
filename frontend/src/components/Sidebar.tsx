@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent, type MouseEvent } from 'react';
-import { Loader2, LogOut, MessageSquarePlus, MessagesSquare, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
+import { Loader2, LogOut, MessageSquarePlus, MessagesSquare, Trash2, UserRound, X } from 'lucide-react';
 import { createChat, deleteChat } from '../api/chat';
 import { ApiError } from '../api/client';
 import ConfirmDialog from './ConfirmDialog';
@@ -9,6 +9,7 @@ const COLORS = {
   box: '#2D2D2D',
   border: '#424242',
   card: '#252525',
+  menu: '#2f2f2f',
   accent: '#F5A623',
   text: '#EDEDED',
   muted: '#949494',
@@ -60,6 +61,8 @@ export default function Sidebar({
   const [isCreating, setIsCreating] = useState(false);
   const [deletingChatId, setDeletingChatId] = useState<number | null>(null);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (openCreateRequest > 0) {
@@ -67,6 +70,31 @@ export default function Sidebar({
       setError(null);
     }
   }, [openCreateRequest]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (target && accountMenuRef.current?.contains(target)) return;
+      setAccountMenuOpen(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setAccountMenuOpen(false);
+    }
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [accountMenuOpen]);
+
+  useEffect(() => {
+    if (!isOpen) setAccountMenuOpen(false);
+  }, [isOpen]);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -277,7 +305,7 @@ export default function Sidebar({
         ) : (
           <div className="space-y-0.5">
             {chats.map((chat) => {
-              const isActive = !profileActive && activeChatId === chat.chat_id;
+              const isActive = activeChatId === chat.chat_id;
               return (
                 <div
                   key={chat.chat_id}
@@ -359,20 +387,78 @@ export default function Sidebar({
         )}
       </div>
 
-      <div className="shrink-0 p-2" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+      <div
+        ref={accountMenuRef}
+        className="shrink-0 p-2 relative"
+        style={{ borderTop: `1px solid ${COLORS.border}` }}
+      >
+        {accountMenuOpen && (
+          <div
+            role="menu"
+            aria-label="Меню аккаунта"
+            className="absolute left-2 right-2 bottom-[calc(100%+6px)] rounded-2xl py-1.5 shadow-2xl z-20 overflow-hidden"
+            style={{
+              background: COLORS.menu,
+              border: `1px solid ${COLORS.border}`,
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setAccountMenuOpen(false);
+                onOpenProfile();
+              }}
+              className="w-full px-3 py-2.5 flex items-center gap-3 text-left transition-colors"
+              style={{ color: COLORS.text }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = COLORS.card;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <UserRound className="w-4 h-4 shrink-0" style={{ color: COLORS.muted }} />
+              <span className="text-sm">Профиль</span>
+            </button>
+            <div className="mx-2 my-1 h-px" style={{ background: COLORS.border }} />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setAccountMenuOpen(false);
+                onLogout();
+              }}
+              className="w-full px-3 py-2.5 flex items-center gap-3 text-left transition-colors"
+              style={{ color: COLORS.text }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = COLORS.card;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <LogOut className="w-4 h-4 shrink-0" style={{ color: COLORS.muted }} />
+              <span className="text-sm">Выйти</span>
+            </button>
+          </div>
+        )}
+
         <button
           type="button"
-          onClick={onOpenProfile}
+          onClick={() => setAccountMenuOpen((open) => !open)}
+          aria-haspopup="menu"
+          aria-expanded={accountMenuOpen}
           className="w-full rounded-xl px-2.5 py-2.5 flex items-center gap-2.5 text-left transition-colors"
           style={{
-            background: profileActive ? COLORS.box : 'transparent',
+            background: accountMenuOpen || profileActive ? COLORS.box : 'transparent',
             border: `1px solid ${profileActive ? COLORS.accent : 'transparent'}`,
           }}
           onMouseEnter={(e) => {
-            if (!profileActive) e.currentTarget.style.background = COLORS.card;
+            if (!accountMenuOpen && !profileActive) e.currentTarget.style.background = COLORS.card;
           }}
           onMouseLeave={(e) => {
-            if (!profileActive) e.currentTarget.style.background = 'transparent';
+            if (!accountMenuOpen && !profileActive) e.currentTarget.style.background = 'transparent';
           }}
         >
           <span
@@ -390,26 +476,9 @@ export default function Sidebar({
               {userLabel}
             </span>
             <span className="block text-[11px] mt-0.5" style={{ color: COLORS.muted }}>
-              Профиль
+              Аккаунт
             </span>
           </span>
-        </button>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="w-full mt-1 rounded-xl px-2.5 py-2 flex items-center gap-2.5 text-left transition-colors"
-          style={{ color: COLORS.muted }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = COLORS.text;
-            e.currentTarget.style.background = COLORS.card;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = COLORS.muted;
-            e.currentTarget.style.background = 'transparent';
-          }}
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          <span className="text-sm">Выйти</span>
         </button>
       </div>
 
