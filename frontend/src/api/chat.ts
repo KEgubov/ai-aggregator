@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { Chat } from '../types/chat';
+import type { Chat, ChatMember } from '../types/chat';
 
 interface ChatsResponse {
   status: string;
@@ -9,6 +9,11 @@ interface ChatsResponse {
 interface CreateChatResponse {
   status: string;
   chat: Chat;
+}
+
+interface MembersResponse {
+  status: string;
+  members: ChatMember[];
 }
 
 export interface CreateChatPayload {
@@ -37,4 +42,9 @@ export async function deleteChat(chatId: number): Promise<void> {
   await apiFetch<DeleteChatResponse>(`/chat/${chatId}`, {
     method: 'DELETE',
   });
+}
+
+export async function fetchChatMembers(chatId: number): Promise<ChatMember[]> {
+  const data = await apiFetch<MembersResponse>(`/chat/members?chat_id=${chatId}`);
+  return data.members ?? [];
 }

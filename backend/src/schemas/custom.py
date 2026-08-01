@@ -56,3 +56,8 @@ class MessageListResponse(BaseModel):
     """Обёртка списка сообщений чата."""
 
     messages: list[MessageDTO]
+
+class ChatMemberDTO(BaseModel):
+    """Участник чата для отображения в шапке."""
+    username: str
+    about_me: str

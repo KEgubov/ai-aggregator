@@ -217,6 +217,7 @@ export default function App() {
           <ChatView
             chat={activeChat}
             userInitials={userInitials}
+            userLabel={userLabel}
             onToggleSidebar={handleToggleSidebar}
           />
         ) : view === 'profile' ? (

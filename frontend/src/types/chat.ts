@@ -6,3 +6,8 @@ export interface Chat {
   created_at: string;
   updated_at: string;
 }
+
+export interface ChatMember {
+  username: string;
+  about_me: string;
+}

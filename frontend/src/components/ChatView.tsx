@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
+import ChatMembersAvatars from './ChatMembersAvatars';
 import SidebarToggle from './SidebarToggle';
 import { fetchModels, findModelByName, resolveModelDisplayName, type ApiModel } from '../api/models';
 import { fetchMessages, sendChatMessage, streamMessage } from '../api/message';
@@ -54,12 +55,14 @@ function mapMessagesWithDisplayNames(apiMessages: ApiMessage[], models: ApiModel
 interface ChatViewProps {
   chat: Chat;
   userInitials?: string;
+  userLabel?: string;
   onToggleSidebar?: () => void;
 }
 
 export default function ChatView({
   chat,
   userInitials = 'Я',
+  userLabel,
   onToggleSidebar,
 }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -280,6 +283,7 @@ export default function ChatView({
               AI Aggregator
             </span>
           </div>
+          <ChatMembersAvatars chatId={chat.chat_id} ownerUsername={userLabel} />
         </div>
       </header>
 
