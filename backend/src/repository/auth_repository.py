@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, Row
 from sqlalchemy.sql.elements import and_
 
 from backend.src.core.database import async_session
@@ -12,7 +12,7 @@ class AuthRepository:
     """Доступ к БД для аутентификации пользователей."""
 
     @staticmethod
-    async def authenticate_user(creds: LoginData) -> Any | None:
+    async def authenticate_user(creds: LoginData) -> Row[tuple[str, int]] | None:
         """Проверяет email/пароль; при успехе обновляет last_seen_at и возвращает user_id."""
         async with async_session() as session:
             query = select(User.user_id).where(

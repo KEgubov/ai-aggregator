@@ -1,5 +1,6 @@
 from backend.src.models.orm_models import Chat, ChatMember
 from backend.src.schemas.chat_schema import ChatDTO, ChatAddDTO
+from backend.src.schemas.custom import ChatMemberDTO
 
 
 class ChatService:
@@ -8,7 +9,9 @@ class ChatService:
     def __init__(self, chat_repository):
         self.chat_repository = chat_repository
 
-    async def validate_create_chat(self, chat: ChatAddDTO, owner_id: int) -> ChatDTO | None:
+    async def validate_create_chat(
+        self, chat: ChatAddDTO, owner_id: int
+    ) -> ChatDTO | None:
         """Создаёт чат и добавляет владельца в участники."""
         chat_model = Chat(
             name=chat.name,
@@ -26,9 +29,13 @@ class ChatService:
             return result_dto
         return None
 
-    async def validate_personal_chats_from_user(self, user_id: int) -> list[ChatDTO] | None:
+    async def validate_personal_chats_from_user(
+        self, user_id: int
+    ) -> list[ChatDTO] | None:
         """Возвращает личные чаты пользователя в виде списка DTO."""
-        personal_chats = await self.chat_repository.get_personal_chats_from_user(user_id)
+        personal_chats = await self.chat_repository.get_personal_chats_from_user(
+            user_id
+        )
         if personal_chats:
             result_dtos = [
                 ChatDTO.model_validate(row, from_attributes=True)
@@ -43,3 +50,13 @@ class ChatService:
         if not response:
             return False
         return True
+
+    async def validate_chat_members(self, chat_id: int) -> list[ChatMemberDTO] | None:
+        """Возвращает участников чата; None если участников нет."""
+        chat_members = await self.chat_repository.get_chat_members(chat_id)
+        if chat_members:
+            return [
+                ChatMemberDTO.model_validate(row, from_attributes=True)
+                for row in chat_members
+            ]
+        return None

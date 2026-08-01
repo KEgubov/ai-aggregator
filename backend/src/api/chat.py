@@ -44,11 +44,15 @@ async def delete_chat(
         raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok"}
 
+
 @router.get("/members")
 async def get_members(
-
+    chat_id: int,
     chat_service=Depends(get_chat_service),
     current_user=Depends(get_current_user),
 ):
-    """Возвращает участников чата (пока не реализовано)."""
-    pass
+    """Возвращает участников чата (владелец + остальные)."""
+    chat_members = await chat_service.validate_chat_members(chat_id)
+    if not chat_members:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"status": "ok", "members": chat_members}

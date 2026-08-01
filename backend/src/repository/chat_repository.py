@@ -1,8 +1,11 @@
-from sqlalchemy import select
+import asyncio
+from typing import Any
+
+from sqlalchemy import select, Row
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
-from backend.src.models.orm_models import Chat, ChatMember
+from backend.src.models.orm_models import Chat, ChatMember, User
 from backend.src.service.exceptions import DuplicateError
 
 
@@ -58,3 +61,14 @@ class ChatRepository:
             await session.commit()
             await session.refresh(chat_member)
             return chat_member
+
+    @staticmethod
+    async def get_chat_members(chat_id: int) -> Row[tuple[str, int]] | None:
+        async with async_session() as session:
+            query = (
+                select(User.username, User.about_me)
+                .join(ChatMember, ChatMember.user_id == User.user_id)
+                .where(ChatMember.chat_id == chat_id)
+            )
+            result = await session.execute(query)
+            return result.all() if result else None
