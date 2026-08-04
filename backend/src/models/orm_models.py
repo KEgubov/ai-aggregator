@@ -183,6 +183,10 @@ class Chat(Base):
         cascade="all, delete-orphan",
     )
 
+    invite_links = relationship(
+        "ChatInviteLink", back_populates="chat", cascade="all, delete-orphan"
+    )
+
 
 class ProjectChat(Base):
     """Чат внутри проекта.
@@ -540,3 +544,29 @@ class ProjectChatMessage(Base):
         "ProjectChatMessage",
         back_populates="parent",
     )
+
+class ChatInviteLink(Base):
+    __tablename__ = "chat_invite_links"
+
+    invite_id: Mapped[intpk]
+    token: Mapped[str_255] = mapped_column(unique=True, nullable=False) # то, что попадает в URL: /join/<token>
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("chats.chat_id"), nullable=False
+    )
+    created_by: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id"), nullable=False
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
+    )
+    expires_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )     # None = без срока
+
+    is_revoked: Mapped[bool] = mapped_column(default=False) # владелец отозвал ссылку
+    max_uses: Mapped[Optional[int]]
+    uses_count: Mapped[int] = mapped_column(default=0) # сколько раз уже зашли по ссылке
+
+    chat = relationship("Chat", back_populates="invite_links")
+    creator = relationship("User")
+

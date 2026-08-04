@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.src.api import main_router
-from backend.src.api.exception_handler import duplicate_error_handler
+from backend.src.api.exception_handler import duplicate_error_handler, not_found_error_handler
 from backend.src.clients.gemini_client import GeminiClient
 from backend.src.clients.groq_client import GroqClient
 from backend.src.configs.auth_config import authx_settings
@@ -18,7 +18,7 @@ from backend.src.repository.models_repository import ModelRepository
 from backend.src.repository.user_repository import UserRepository
 from backend.src.service.auth_service import AuthService
 from backend.src.service.chat_service import ChatService
-from backend.src.service.exceptions import DuplicateError
+from backend.src.service.exceptions import DuplicateError, NotFoundError
 from backend.src.service.message_service import MessageService
 from backend.src.service.model_service import ModelService
 from backend.src.service.user_service import UserService
@@ -78,4 +78,5 @@ app.add_middleware(
 app.include_router(main_router)
 
 app.add_exception_handler(DuplicateError, duplicate_error_handler)
+app.add_exception_handler(NotFoundError, not_found_error_handler)
 

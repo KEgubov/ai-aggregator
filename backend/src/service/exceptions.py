@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy.exc import IntegrityError
 
 
@@ -19,4 +21,12 @@ class DuplicateError(IntegrityError):
 
     def __str__(self) -> str:
         """Строковое представление: ``ERROR_CODE: message``."""
+        return f"{self.error_code}: {self.message}"
+
+class NotFoundError(Exception):
+    def __init__(self, message: str, error_code: str = "NOT_FOUND"):
+        self.message = message
+        self.error_code = error_code
+
+    def __str__(self) -> str:
         return f"{self.error_code}: {self.message}"

@@ -48,3 +48,19 @@ export async function fetchChatMembers(chatId: number): Promise<ChatMember[]> {
   const data = await apiFetch<MembersResponse>(`/chat/members?chat_id=${chatId}`);
   return data.members ?? [];
 }
+
+interface InviteResponse {
+  status: string;
+  token: string | { token: string };
+}
+
+/** Создаёт invite-токен для чата. Возвращает строку token. */
+export async function createChatInvite(chatId: number): Promise<string> {
+  const data = await apiFetch<InviteResponse>(`/chat/${chatId}/invite`, {
+    method: 'POST',
+  });
+  const raw = data.token;
+  if (typeof raw === 'string') return raw;
+  if (raw && typeof raw.token === 'string') return raw.token;
+  throw new Error('Invite token missing in response');
+}

@@ -1,11 +1,8 @@
-import asyncio
-from typing import Any
-
 from sqlalchemy import select, Row
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
-from backend.src.models.orm_models import Chat, ChatMember, User
+from backend.src.models.orm_models import Chat, ChatMember, User, ChatInviteLink
 from backend.src.service.exceptions import DuplicateError
 
 
@@ -34,7 +31,8 @@ class ChatRepository:
         async with async_session() as session:
             query = (
                 select(Chat)
-                .where(Chat.owner_id == user_id)
+                .join(ChatMember, ChatMember.chat_id == Chat.chat_id)
+                .where(ChatMember.user_id == user_id)
             )
             personal_chats = await session.execute(query)
             return personal_chats.scalars().all() if personal_chats else None
@@ -72,3 +70,24 @@ class ChatRepository:
             )
             result = await session.execute(query)
             return result.all() if result else None
+
+    @staticmethod
+    async def user_in_chat_member(chat_id: int, user_id: int) -> bool:
+        async with async_session() as session:
+            query = (
+                select(ChatMember)
+                .where(ChatMember.chat_id == chat_id)
+                .where(ChatMember.user_id == user_id)
+            )
+            result = await session.execute(query)
+            if not result:
+                return False
+            return True
+
+    @staticmethod
+    async def add_link_in_db(chat_link: ChatInviteLink) -> ChatInviteLink:
+        async with async_session() as session:
+            session.add(chat_link)
+            await session.commit()
+            await session.refresh(chat_link)
+            return chat_link

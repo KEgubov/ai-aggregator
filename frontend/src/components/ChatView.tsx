@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, Gem, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
+import { Brain, Gem, Link2, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
 import ChatMembersAvatars from './ChatMembersAvatars';
 import SidebarToggle from './SidebarToggle';
+import { createChatInvite } from '../api/chat';
 import { fetchModels, findModelByName, resolveModelDisplayName, type ApiModel } from '../api/models';
 import { fetchMessages, sendChatMessage, streamMessage } from '../api/message';
 import {
@@ -20,6 +21,8 @@ const MODEL_ICONS: LucideIcon[] = [Sparkles, Zap, Gem, Brain, Rocket, Satellite]
 const COLORS = {
   text: '#EDEDED',
   muted: '#949494',
+  card: '#252525',
+  accent: '#F5A623',
 };
 
 function mapApiModelToInput(model: ApiModel, index: number) {
@@ -71,8 +74,11 @@ export default function ChatView({
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteHint, setInviteHint] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inviteHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modelsLoadedRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
   const sendingRef = useRef(false);
@@ -114,6 +120,7 @@ export default function ChatView({
     const seq = ++loadSeqRef.current;
     setIsLoadingMessages(true);
     setMessagesError(null);
+    setInviteHint(null);
 
     void (async () => {
       try {
@@ -143,6 +150,33 @@ export default function ChatView({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      if (inviteHintTimerRef.current) clearTimeout(inviteHintTimerRef.current);
+    };
+  }, []);
+
+  const showInviteHint = useCallback((text: string) => {
+    setInviteHint(text);
+    if (inviteHintTimerRef.current) clearTimeout(inviteHintTimerRef.current);
+    inviteHintTimerRef.current = setTimeout(() => setInviteHint(null), 2200);
+  }, []);
+
+  const handleInvite = useCallback(async () => {
+    if (inviteBusy) return;
+    setInviteBusy(true);
+    try {
+      const token = await createChatInvite(chat.chat_id);
+      const url = `${window.location.origin}/join/${token}`;
+      await navigator.clipboard.writeText(url);
+      showInviteHint('Ссылка скопирована');
+    } catch (err) {
+      showInviteHint(err instanceof Error ? err.message : 'Не удалось создать ссылку');
+    } finally {
+      setInviteBusy(false);
+    }
+  }, [chat.chat_id, inviteBusy, showInviteHint]);
 
   const reloadFromServer = useCallback(async () => {
     let models = apiModels;
@@ -284,6 +318,41 @@ export default function ChatView({
             </span>
           </div>
           <ChatMembersAvatars chatId={chat.chat_id} ownerUsername={userLabel} />
+          <div className="relative ml-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => void handleInvite()}
+              disabled={inviteBusy}
+              aria-label="Пригласить в чат"
+              title="Пригласить в чат"
+              className="p-2 rounded-lg transition-colors disabled:opacity-50"
+              style={{ color: inviteHint === 'Ссылка скопирована' ? COLORS.accent : COLORS.muted }}
+              onMouseEnter={(e) => {
+                if (inviteBusy) return;
+                e.currentTarget.style.color = COLORS.text;
+                e.currentTarget.style.background = COLORS.card;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color =
+                  inviteHint === 'Ссылка скопирована' ? COLORS.accent : COLORS.muted;
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <Link2 className="w-4 h-4" />
+            </button>
+            {inviteHint && (
+              <span
+                className="absolute right-0 top-[calc(100%+6px)] z-50 whitespace-nowrap rounded-md px-2 py-1 text-[11px] shadow-lg"
+                style={{
+                  background: COLORS.card,
+                  color: inviteHint === 'Ссылка скопирована' ? COLORS.accent : '#f87171',
+                  border: '1px solid #424242',
+                }}
+              >
+                {inviteHint}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 

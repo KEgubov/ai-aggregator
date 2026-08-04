@@ -61,3 +61,6 @@ class ChatMemberDTO(BaseModel):
     """Участник чата для отображения в шапке."""
     username: str
     about_me: str
+
+class ChatInviteLinkDTO(BaseModel):
+    token: str

@@ -1,6 +1,11 @@
-from backend.src.models.orm_models import Chat, ChatMember
+import asyncio
+import uuid
+
+from backend.src.models.orm_models import Chat, ChatMember, ChatInviteLink
+from backend.src.repository.chat_repository import ChatRepository
 from backend.src.schemas.chat_schema import ChatDTO, ChatAddDTO
-from backend.src.schemas.custom import ChatMemberDTO
+from backend.src.schemas.custom import ChatMemberDTO, ChatInviteLinkDTO
+from backend.src.service.exceptions import NotFoundError
 
 
 class ChatService:
@@ -59,4 +64,20 @@ class ChatService:
                 ChatMemberDTO.model_validate(row, from_attributes=True)
                 for row in chat_members
             ]
+        return None
+
+    async def generate_invite_link(self, chat_id: int, user_id: int) -> ChatInviteLinkDTO | None:
+        response = await self.chat_repository.user_in_chat_member(chat_id, user_id)
+        if response is False:
+            raise NotFoundError(message="User not found")
+        my_uuid = uuid.uuid4()
+        link_model = ChatInviteLink(
+            token=str(my_uuid),
+            chat_id=chat_id,
+            created_by=user_id,
+        )
+        link = await self.chat_repository.add_link_in_db(link_model)
+        if link:
+            result_dto = ChatInviteLinkDTO.model_validate(link, from_attributes=True)
+            return result_dto
         return None

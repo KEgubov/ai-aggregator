@@ -56,3 +56,17 @@ async def get_members(
     if not chat_members:
         raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok", "members": chat_members}
+
+@router.post("/{chat_id}/invite")
+async def invite(
+        chat_id: int,
+        current_user = Depends(get_current_user),
+        chat_service = Depends(get_chat_service),
+):
+    token = await chat_service.generate_invite_link(
+        chat_id=chat_id,
+        user_id=current_user.user_id,
+    )
+    if not token:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"status": "ok", "token": token}
