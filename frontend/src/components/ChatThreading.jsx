@@ -340,13 +340,17 @@ function Avatar({ label, isAI, size = 'sm' }) {
   const dim = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-9 h-9 text-sm';
   const style = isAI
     ? { background: COLORS.accent, color: '#1a1200' }
-    : { background: '#3a3a3a', color: '#d4d4d4' };
+    : {
+        background: '#1f1f1f',
+        color: COLORS.accent,
+        border: '1px solid #424242',
+      };
 
   return (
     <div
       title={label}
       style={style}
-      className={`shrink-0 ${dim} rounded-full flex items-center justify-center font-medium select-none`}
+      className={`shrink-0 ${dim} rounded-full flex items-center justify-center font-semibold select-none`}
     >
       {isAI ? <Sparkles className="w-3 h-3" /> : label.slice(0, 2)}
     </div>
@@ -615,18 +619,20 @@ function ResponseFooter({ text, modelName, createdAt, active, onBranch, userInit
 function UserBubble({ text, isMe, userInitials }) {
   const radius = isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px';
   return (
-    <div className={`flex items-end gap-2 min-w-0 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-      <Avatar label={userInitials} isAI={false} size="md" />
-      <div
-        style={{
-          maxWidth: 'min(75%, 100%)',
-          background: isMe ? COLORS.myBubble : COLORS.otherBubble,
-          color: '#d4d4d4',
-          borderRadius: radius,
-        }}
-        className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0"
-      >
-        {text}
+    <div className={`flex w-full min-w-0 ${isMe ? 'justify-end' : 'justify-start'}`}>
+      <div className={`flex items-end gap-2 min-w-0 max-w-full ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+        <Avatar label={userInitials} isAI={false} size="md" />
+        <div
+          style={{
+            maxWidth: 'min(75vw, 28rem)',
+            background: isMe ? COLORS.myBubble : COLORS.otherBubble,
+            color: '#d4d4d4',
+            borderRadius: radius,
+          }}
+          className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0"
+        >
+          {text}
+        </div>
       </div>
     </div>
   );
@@ -699,12 +705,13 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
 
       {messages.map((msg) => {
         if (msg.type === 'user') {
+          const mine = msg.isMe === true;
           return (
             <UserBubble
               key={msg.id}
               text={msg.text}
-              isMe={msg.isMe !== false}
-              userInitials={userInitials}
+              isMe={mine}
+              userInitials={mine ? userInitials : (msg.authorInitials || '?')}
             />
           );
         }

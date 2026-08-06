@@ -1,4 +1,7 @@
+import asyncio
+
 from backend.src.models.orm_models import ChatMessage
+from backend.src.repository.message_repository import MessageRepository
 from backend.src.schemas.custom import MessageListResponse
 from backend.src.schemas.message_schema import MessageAddDTO, MessageDTO
 
@@ -104,8 +107,8 @@ class MessageService:
         all_messages = await self.message_repository.get_all_messages(chat_id)
         return MessageListResponse(
             messages=[
-                MessageDTO.model_validate(row, from_attributes=True)
-                for row in all_messages
+                MessageDTO.model_validate(message, from_attributes=True).model_copy(update={"username": username})
+                for message, username in all_messages
             ]
         )
 

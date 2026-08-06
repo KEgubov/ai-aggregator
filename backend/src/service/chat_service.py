@@ -1,10 +1,8 @@
-import asyncio
 import uuid
 
 from backend.src.models.orm_models import Chat, ChatMember, ChatInviteLink
-from backend.src.repository.chat_repository import ChatRepository
 from backend.src.schemas.chat_schema import ChatDTO, ChatAddDTO
-from backend.src.schemas.custom import ChatMemberDTO, ChatInviteLinkDTO
+from backend.src.schemas.custom import ChatMemberDTO, ChatTokenDTO
 from backend.src.service.exceptions import NotFoundError
 
 
@@ -66,9 +64,9 @@ class ChatService:
             ]
         return None
 
-    async def generate_invite_link(self, chat_id: int, user_id: int) -> ChatInviteLinkDTO | None:
+    async def generate_invite_link(self, chat_id: int, user_id: int) -> ChatTokenDTO | None:
         response = await self.chat_repository.user_in_chat_member(chat_id, user_id)
-        if response is False:
+        if not response:
             raise NotFoundError(message="User not found")
         my_uuid = uuid.uuid4()
         link_model = ChatInviteLink(
@@ -78,6 +76,30 @@ class ChatService:
         )
         link = await self.chat_repository.add_link_in_db(link_model)
         if link:
-            result_dto = ChatInviteLinkDTO.model_validate(link, from_attributes=True)
+            result_dto = ChatTokenDTO.model_validate(link, from_attributes=True)
             return result_dto
+        return None
+
+    async def join_chat(self, user_id: int, token: str):
+        invite = await self.chat_repository.find_invite_link(token)
+        if not invite:
+            raise NotFoundError(message="Invite not found")
+        response = await self.chat_repository.user_in_chat_member(invite.chat_id, user_id)
+        if response:
+            model_chat = await self.chat_repository.get_chat_by_id(invite.chat_id)
+            if model_chat:
+                result_dto = ChatDTO.model_validate(model_chat, from_attributes=True)
+                return result_dto
+        member_model = ChatMember(
+            chat_id=invite.chat_id,
+            user_id=user_id,
+        )
+        member_dto = await self.chat_repository.added_user_in_members(member_model)
+        if member_dto:
+            invite.uses_count += 1
+            await self.chat_repository.update_invite_link(token, invite.uses_count)
+            model_chat = await self.chat_repository.get_chat_by_id(invite.chat_id)
+            if model_chat:
+                result_dto = ChatDTO.model_validate(model_chat, from_attributes=True)
+                return result_dto
         return None

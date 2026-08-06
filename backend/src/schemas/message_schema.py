@@ -30,6 +30,7 @@ class MessageDTO(MessageAddDTO):
     position: int = 0
     created_at: datetime
     updated_at: datetime
+    username: Optional[str] = None
 
     @field_validator("path", mode="before")
     @classmethod

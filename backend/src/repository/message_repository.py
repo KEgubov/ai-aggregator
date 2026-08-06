@@ -3,7 +3,7 @@ import asyncio
 from sqlalchemy import select, update, func
 from sqlalchemy_utils import Ltree
 from backend.src.core.database import async_session
-from backend.src.models.orm_models import ChatMessage
+from backend.src.models.orm_models import ChatMessage, User
 
 
 class MessageRepository:
@@ -50,12 +50,13 @@ class MessageRepository:
         """Возвращает все сообщения чата в порядке message_id."""
         async with async_session() as session:
             query = (
-                select(ChatMessage)
+                select(ChatMessage, User.username)
+                .outerjoin(User, ChatMessage.author_id == User.user_id)
                 .where(ChatMessage.chat_id == chat_id)
                 .order_by(ChatMessage.message_id)
             )
             result = await session.execute(query)
-            return list(result.scalars().all())
+            return result.all()
 
     @staticmethod
     async def get_branch_messages(chat_id: int, leaf_path: str) -> list[ChatMessage]:

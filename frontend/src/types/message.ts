@@ -1,8 +1,12 @@
+import { initialsFromName } from './user';
+
 export interface Message {
   id: string;
   type: 'user' | 'ai';
   text: string;
   isMe?: boolean;
+  /** Инициалы автора (для чужих сообщений). */
+  authorInitials?: string;
   modelName?: string;
   isStreaming?: boolean;
   createdAt?: string;
@@ -20,6 +24,7 @@ export interface ApiMessage {
   context_text_snippet?: string | null;
   author_id?: number | null;
   author_type: 'user' | 'assistant' | 'system';
+  username?: string | null;
   ai_model?: string | null;
   ai_provider?: string | null;
   path?: string | null;
@@ -28,12 +33,23 @@ export interface ApiMessage {
   updated_at: string;
 }
 
-export function mapMessageFromApi(dto: ApiMessage): Message {
+export function mapMessageFromApi(
+  dto: ApiMessage,
+  currentUserId?: number | null,
+): Message {
+  const isUser = dto.author_type === 'user';
+  const isMe =
+    isUser &&
+    currentUserId != null &&
+    dto.author_id != null &&
+    dto.author_id === currentUserId;
+
   return {
     id: String(dto.message_id),
-    type: dto.author_type === 'user' ? 'user' : 'ai',
+    type: isUser ? 'user' : 'ai',
     text: dto.content,
-    isMe: dto.author_type === 'user',
+    isMe,
+    authorInitials: dto.username ? initialsFromName(dto.username) : undefined,
     modelName: dto.ai_model ?? undefined,
     createdAt: dto.created_at,
     parentId: dto.parent_id,

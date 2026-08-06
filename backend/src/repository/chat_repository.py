@@ -1,4 +1,6 @@
-from sqlalchemy import select, Row
+import asyncio
+
+from sqlalchemy import select, Row, update
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
@@ -24,6 +26,15 @@ class ChatRepository:
                         message="Chat already exists!",
                         error_code="CHAT_DUPLICATE",
                     )
+    @staticmethod
+    async def get_chat_by_id(chat_id: int) -> Chat | None:
+        async with async_session() as session:
+            query = (
+                select(Chat)
+                .where(Chat.chat_id == chat_id)
+            )
+            result = await session.execute(query)
+            return result.scalar() if result else None
 
     @staticmethod
     async def get_personal_chats_from_user(user_id: int):
@@ -72,7 +83,7 @@ class ChatRepository:
             return result.all() if result else None
 
     @staticmethod
-    async def user_in_chat_member(chat_id: int, user_id: int) -> bool:
+    async def user_in_chat_member(chat_id: int, user_id: int) -> ChatMember | None:
         async with async_session() as session:
             query = (
                 select(ChatMember)
@@ -80,9 +91,7 @@ class ChatRepository:
                 .where(ChatMember.user_id == user_id)
             )
             result = await session.execute(query)
-            if not result:
-                return False
-            return True
+            return result.scalar() if result else None
 
     @staticmethod
     async def add_link_in_db(chat_link: ChatInviteLink) -> ChatInviteLink:
@@ -91,3 +100,24 @@ class ChatRepository:
             await session.commit()
             await session.refresh(chat_link)
             return chat_link
+
+    @staticmethod
+    async def find_invite_link(token: str) -> ChatInviteLink | None:
+        async with async_session() as session:
+            query = (
+                select(ChatInviteLink)
+                .where(ChatInviteLink.token == token)
+            )
+            result = await session.execute(query)
+            return result.scalar() if result else None
+
+    @staticmethod
+    async def update_invite_link(token: str, uses_count: int) -> None:
+        async with async_session() as session:
+            stmt = (
+                update(ChatInviteLink)
+                .where(ChatInviteLink.token == token)
+                .values(uses_count=uses_count)
+            )
+            await session.execute(stmt)
+            await session.commit()

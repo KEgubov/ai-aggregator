@@ -5,7 +5,7 @@ import ChatView from './components/ChatView';
 import ProfileModal from './components/ProfileModal';
 import Sidebar from './components/Sidebar';
 import { fetchProfile, logoutUser } from './api/auth';
-import { fetchChats } from './api/chat';
+import { fetchChats, joinChat } from './api/chat';
 import { ApiError } from './api/client';
 import type { Chat } from './types/chat';
 import { initialsFromName } from './types/user';
@@ -13,12 +13,30 @@ import { initialsFromName } from './types/user';
 type AppView = 'loading' | 'auth' | 'chats' | 'conversation';
 
 const LOGOUT_FLAG = 'agregation_logged_out';
+const PENDING_JOIN_TOKEN = 'agregation_pending_join';
 const DEFAULT_INITIALS = 'Я';
 const DEFAULT_LABEL = 'Пользователь';
 const DESKTOP_MQ = '(min-width: 768px)';
 
 function isDesktopViewport(): boolean {
   return typeof window !== 'undefined' && window.matchMedia(DESKTOP_MQ).matches;
+}
+
+/** Достаёт token из /join/<token>, иначе null. */
+function readJoinTokenFromPath(): string | null {
+  const match = window.location.pathname.match(/^\/join\/([^/]+)\/?$/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function clearJoinPath() {
+  if (window.location.pathname.startsWith('/join/')) {
+    window.history.replaceState(null, '', '/');
+  }
 }
 
 export default function App() {
@@ -28,16 +46,20 @@ export default function App() {
   const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [userInitials, setUserInitials] = useState(DEFAULT_INITIALS);
   const [userLabel, setUserLabel] = useState(DEFAULT_LABEL);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [openCreateRequest, setOpenCreateRequest] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(() => isDesktopViewport());
   const [profileOpen, setProfileOpen] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   const loadProfile = useCallback(async () => {
     try {
       const profile = await fetchProfile();
+      setCurrentUserId(profile.user_id);
       setUserInitials(initialsFromName(profile.username));
       setUserLabel(profile.username || DEFAULT_LABEL);
     } catch {
+      setCurrentUserId(null);
       setUserInitials(DEFAULT_INITIALS);
       setUserLabel(DEFAULT_LABEL);
     }
@@ -60,19 +82,62 @@ export default function App() {
     }
   }, []);
 
+  const closeSidebarOnMobile = useCallback(() => {
+    if (!isDesktopViewport()) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
+  const acceptInvite = useCallback(
+    async (token: string): Promise<boolean> => {
+      setJoinError(null);
+      try {
+        const chat = await joinChat(token);
+        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
+        clearJoinPath();
+        setChats((prev) => {
+          if (prev.some((c) => c.chat_id === chat.chat_id)) return prev;
+          return [chat, ...prev];
+        });
+        setActiveChat(chat);
+        setView('conversation');
+        closeSidebarOnMobile();
+        return true;
+      } catch (err) {
+        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
+        clearJoinPath();
+        setJoinError(err instanceof Error ? err.message : 'Не удалось присоединиться к чату');
+        return false;
+      }
+    },
+    [closeSidebarOnMobile],
+  );
+
   const bootstrap = useCallback(async () => {
+    const pathToken = readJoinTokenFromPath();
+    if (pathToken) {
+      sessionStorage.setItem(PENDING_JOIN_TOKEN, pathToken);
+    }
+
     if (sessionStorage.getItem(LOGOUT_FLAG)) {
       setView('auth');
       return;
     }
+
     const isAuthenticated = await loadChats();
     if (isAuthenticated) {
       await loadProfile();
+      const pending = sessionStorage.getItem(PENDING_JOIN_TOKEN) ?? pathToken;
+      if (pending) {
+        const ok = await acceptInvite(pending);
+        if (!ok) setView('chats');
+        return;
+      }
       setView('chats');
     } else {
       setView('auth');
     }
-  }, [loadChats, loadProfile]);
+  }, [acceptInvite, loadChats, loadProfile]);
 
   useEffect(() => {
     void bootstrap();
@@ -87,18 +152,19 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
-  const closeSidebarOnMobile = useCallback(() => {
-    if (!isDesktopViewport()) {
-      setSidebarOpen(false);
-    }
-  }, []);
-
   const handleAuthSuccess = useCallback(async () => {
     sessionStorage.removeItem(LOGOUT_FLAG);
     await Promise.all([loadChats(), loadProfile()]);
-    setView('chats');
     setSidebarOpen(isDesktopViewport());
-  }, [loadChats, loadProfile]);
+
+    const pending = sessionStorage.getItem(PENDING_JOIN_TOKEN) ?? readJoinTokenFromPath();
+    if (pending) {
+      const ok = await acceptInvite(pending);
+      if (!ok) setView('chats');
+      return;
+    }
+    setView('chats');
+  }, [acceptInvite, loadChats, loadProfile]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -111,7 +177,9 @@ export default function App() {
     setActiveChat(null);
     setUserInitials(DEFAULT_INITIALS);
     setUserLabel(DEFAULT_LABEL);
+    setCurrentUserId(null);
     setProfileOpen(false);
+    setJoinError(null);
     setView('auth');
   }, []);
 
@@ -134,19 +202,16 @@ export default function App() {
     [closeSidebarOnMobile],
   );
 
-  const handleChatDeleted = useCallback(
-    (chatId: number) => {
-      setChats((prev) => prev.filter((chat) => chat.chat_id !== chatId));
-      setActiveChat((prev) => {
-        if (prev?.chat_id === chatId) {
-          setView('chats');
-          return null;
-        }
-        return prev;
-      });
-    },
-    [],
-  );
+  const handleChatDeleted = useCallback((chatId: number) => {
+    setChats((prev) => prev.filter((chat) => chat.chat_id !== chatId));
+    setActiveChat((prev) => {
+      if (prev?.chat_id === chatId) {
+        setView('chats');
+        return null;
+      }
+      return prev;
+    });
+  }, []);
 
   const handleBackToChats = useCallback(() => {
     setActiveChat(null);
@@ -214,10 +279,29 @@ export default function App() {
         onRefresh={() => void loadChats()}
         onNewChatHome={handleBackToChats}
       />
-      <main className="flex-1 min-w-0 h-full">
+      <main className="flex-1 min-w-0 h-full relative">
+        {joinError && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 max-w-[min(90%,24rem)]">
+            <div
+              className="rounded-lg px-3 py-2 text-xs shadow-lg flex items-start gap-2"
+              style={{ background: '#252525', border: '1px solid #424242', color: '#f87171' }}
+            >
+              <span className="flex-1 min-w-0 break-words">{joinError}</span>
+              <button
+                type="button"
+                className="shrink-0 text-[#949494] hover:text-[#EDEDED]"
+                aria-label="Закрыть"
+                onClick={() => setJoinError(null)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
         {view === 'conversation' && activeChat ? (
           <ChatView
             chat={activeChat}
+            currentUserId={currentUserId}
             userInitials={userInitials}
             userLabel={userLabel}
             onToggleSidebar={handleToggleSidebar}

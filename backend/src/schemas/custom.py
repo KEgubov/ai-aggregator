@@ -62,5 +62,5 @@ class ChatMemberDTO(BaseModel):
     username: str
     about_me: str
 
-class ChatInviteLinkDTO(BaseModel):
+class ChatTokenDTO(BaseModel):
     token: str

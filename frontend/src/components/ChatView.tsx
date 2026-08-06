@@ -44,9 +44,13 @@ function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiM
     .filter((m): m is ApiModel => Boolean(m));
 }
 
-function mapMessagesWithDisplayNames(apiMessages: ApiMessage[], models: ApiModel[]): Message[] {
+function mapMessagesWithDisplayNames(
+  apiMessages: ApiMessage[],
+  models: ApiModel[],
+  currentUserId?: number | null,
+): Message[] {
   return apiMessages.map((dto) => {
-    const mapped = mapMessageFromApi(dto);
+    const mapped = mapMessageFromApi(dto, currentUserId);
     if (mapped.type !== 'ai') return mapped;
     return {
       ...mapped,
@@ -57,6 +61,7 @@ function mapMessagesWithDisplayNames(apiMessages: ApiMessage[], models: ApiModel
 
 interface ChatViewProps {
   chat: Chat;
+  currentUserId?: number | null;
   userInitials?: string;
   userLabel?: string;
   onToggleSidebar?: () => void;
@@ -64,6 +69,7 @@ interface ChatViewProps {
 
 export default function ChatView({
   chat,
+  currentUserId = null,
   userInitials = 'Я',
   userLabel,
   onToggleSidebar,
@@ -135,7 +141,7 @@ export default function ChatView({
               }).catch(() => apiModels),
         ]);
         if (seq !== loadSeqRef.current || sendingRef.current) return;
-        setMessages(mapMessagesWithDisplayNames(apiMessages, models));
+        setMessages(mapMessagesWithDisplayNames(apiMessages, models, currentUserId));
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
         setMessagesError(err instanceof Error ? err.message : 'Не удалось загрузить сообщения');
@@ -145,7 +151,7 @@ export default function ChatView({
         }
       }
     })();
-  }, [chat.chat_id]);
+  }, [chat.chat_id, currentUserId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -190,8 +196,8 @@ export default function ChatView({
       }
     }
     const apiMessages = await fetchMessages(chat.chat_id);
-    setMessages(mapMessagesWithDisplayNames(apiMessages, models));
-  }, [apiModels, chat.chat_id]);
+    setMessages(mapMessagesWithDisplayNames(apiMessages, models, currentUserId));
+  }, [apiModels, chat.chat_id, currentUserId]);
 
   const handleSend = useCallback(
     async (payload: { text: string; modelTokens: string[]; memberTokens: string[] }) => {

@@ -70,3 +70,14 @@ async def invite(
     if not token:
         raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok", "token": token}
+
+@router.post("/join/{token}")
+async def join(
+        token: str,
+        current_user = Depends(get_current_user),
+        chat_service=Depends(get_chat_service),
+):
+    chat = await chat_service.join_chat(current_user.user_id, token)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"status": "ok", "chat": chat}

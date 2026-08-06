@@ -64,3 +64,16 @@ export async function createChatInvite(chatId: number): Promise<string> {
   if (raw && typeof raw.token === 'string') return raw.token;
   throw new Error('Invite token missing in response');
 }
+
+interface JoinChatResponse {
+  status: string;
+  chat: Chat;
+}
+
+/** Присоединяется к чату по invite-токену. */
+export async function joinChat(token: string): Promise<Chat> {
+  const data = await apiFetch<JoinChatResponse>(`/chat/join/${encodeURIComponent(token)}`, {
+    method: 'POST',
+  });
+  return data.chat;
+}
