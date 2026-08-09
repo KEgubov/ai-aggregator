@@ -1,5 +1,3 @@
-import asyncio
-
 from sqlalchemy import select, Row, update
 from sqlalchemy.exc import IntegrityError
 

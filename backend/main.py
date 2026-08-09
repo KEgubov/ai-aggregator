@@ -9,6 +9,7 @@ from backend.src.api import main_router
 from backend.src.api.exception_handler import duplicate_error_handler, not_found_error_handler
 from backend.src.clients.gemini_client import GeminiClient
 from backend.src.clients.groq_client import GroqClient
+from backend.src.clients.redis_client import redis_client
 from backend.src.configs.auth_config import authx_settings
 from backend.src.core.logger import setup_logging
 from backend.src.repository.auth_repository import AuthRepository
@@ -44,6 +45,7 @@ async def init_services(app: FastAPI):
     )
     app.state.chat_service = ChatService(
         chat_repository=ChatRepository(),
+        redis_client=redis_client
     )
     app.state.message_service = MessageService(
         message_repository=MessageRepository()
@@ -61,8 +63,9 @@ async def lifespan(app: FastAPI):
     await init_security(app)
     await init_services(app)
     await init_clients(app)
-
+    await redis_client.connect()
     yield
+    await redis_client.disconnect()
 
 
 app = FastAPI(title="AI Aggregator", lifespan=lifespan)
