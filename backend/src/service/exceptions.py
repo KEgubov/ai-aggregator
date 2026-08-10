@@ -30,3 +30,11 @@ class NotFoundError(Exception):
 
     def __str__(self) -> str:
         return f"{self.error_code}: {self.message}"
+
+class ForbiddenError(Exception):
+    def __init__(self, message: str, error_code: str = "FORBIDDEN"):
+        self.message = message
+        self.error_code = error_code
+
+    def __str__(self) -> str:
+        return f"{self.error_code}: {self.message}"

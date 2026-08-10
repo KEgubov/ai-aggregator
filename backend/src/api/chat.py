@@ -1,20 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
-
 from backend.src.api.dependency import get_current_user, get_chat_service
-from backend.src.schemas.chat_schema import ChatAddDTO
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 @router.post("/create")
 async def create_chat(
-    chat: ChatAddDTO,
     chat_service=Depends(get_chat_service),
     current_user=Depends(get_current_user),
 ):
     """Создаёт личный чат и добавляет текущего пользователя в участники."""
     chat_add = await chat_service.validate_create_chat(
-        chat, owner_id=current_user.user_id
+        owner_id=current_user.user_id
     )
     return {"status": "ok", "chat": chat_add}
 
@@ -81,3 +78,14 @@ async def join(
     if not chat:
         raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok", "chat": chat}
+
+
+@router.patch("/{chat_id}/rename")
+async def rename(
+        chat_id: int,
+        name: str,
+        current_user = Depends(get_current_user),
+        chat_service = Depends(get_chat_service),
+):
+    renamed_chat = await chat_service.rename_chat(current_user.user_id, chat_id, name)
+    return {"status": "ok", "renamed_chat": renamed_chat}

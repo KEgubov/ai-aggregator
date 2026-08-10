@@ -1,4 +1,4 @@
-from sqlalchemy import select, Row, update
+from sqlalchemy import select, Row, update, and_
 from sqlalchemy.exc import IntegrityError
 
 from backend.src.core.database import async_session
@@ -73,7 +73,7 @@ class ChatRepository:
     async def get_chat_members(chat_id: int) -> Row[tuple[str, int]] | None:
         async with async_session() as session:
             query = (
-                select(User.username, User.about_me)
+                select(User.username, User.about_me, ChatMember.is_owner)
                 .join(ChatMember, ChatMember.user_id == User.user_id)
                 .where(ChatMember.chat_id == chat_id)
             )
@@ -129,3 +129,29 @@ class ChatRepository:
             )
             result = await session.execute(stmt)
             return result.scalars().all() if result else None
+
+    @staticmethod
+    async def rename_chat_in_db(chat_id: int, name: str) -> Chat:
+        async with async_session() as session:
+            query = (
+                update(Chat)
+                .where(Chat.chat_id == chat_id)
+                .values(name=name)
+                .returning(Chat)
+            )
+            result = await session.execute(query)
+            chat = result.scalar_one()
+            await session.commit()
+            await session.refresh(chat)
+            return chat
+
+    @staticmethod
+    async def is_owner_chat(user_id: int, chat_id: int) -> bool:
+        async with async_session() as session:
+            stmt = (
+                select(ChatMember.is_owner)
+                .where(and_(ChatMember.user_id == user_id, ChatMember.chat_id == chat_id))
+            )
+            result = await session.execute(stmt)
+            value = result.scalar()
+            return bool(value)

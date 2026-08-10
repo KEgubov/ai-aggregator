@@ -256,6 +256,9 @@ class ChatMember(Base):
     joined_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
+    is_owner: Mapped[bool] = mapped_column(
+        default=False, nullable=False
+    )
 
     chat = relationship("Chat", back_populates="members")
     user = relationship("User", back_populates="chat_memberships")
