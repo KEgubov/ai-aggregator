@@ -1,3 +1,4 @@
+from backend.src.core.redis_keys import RedisKeys
 from backend.src.models.orm_models import User
 from backend.src.schemas.custom import CurrentUserDTO, UserProfileDTO
 from backend.src.schemas.user_schema import UserAddDTO, UserDTO
@@ -6,8 +7,9 @@ from backend.src.schemas.user_schema import UserAddDTO, UserDTO
 class UserService:
     """Бизнес-логика пользователей: регистрация, профиль, смена имени."""
 
-    def __init__(self, user_repository):
+    def __init__(self, user_repository, redis_client):
         self.user_repository = user_repository
+        self.redis_client = redis_client
 
     async def user_validate(self, user: UserAddDTO) -> UserDTO | None:
         """Регистрирует пользователя; username берётся из локальной части email."""
@@ -34,13 +36,19 @@ class UserService:
 
     async def get_user_profile(self, user_id: int) -> UserProfileDTO | None:
         """Возвращает профиль пользователя по id или None."""
+        cached_user_profile = await self.redis_client.get(RedisKeys.profile(user_id))
+        if cached_user_profile:
+            return UserProfileDTO.model_validate(cached_user_profile)
         profile = await self.user_repository.get_current_user_by_id(user_id)
         if profile:
             result_dto = UserProfileDTO.model_validate(profile, from_attributes=True)
+            profile_for_cache = result_dto.model_dump(mode="json")
+            await self.redis_client.set(RedisKeys.profile(user_id), profile_for_cache)
             return result_dto
         return None
 
     async def change_username(self, user_id: int, username: str) -> str:
         """Обновляет username пользователя и возвращает новое значение."""
         new_username = await self.user_repository.update_username(user_id, username)
+        await self.redis_client.delete_key(RedisKeys.profile(user_id))
         return new_username

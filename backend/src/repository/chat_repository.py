@@ -119,3 +119,13 @@ class ChatRepository:
             )
             await session.execute(stmt)
             await session.commit()
+
+    @staticmethod
+    async def get_chat_member_ids(chat_id: int) -> list[int] | None:
+        async with async_session() as session:
+            stmt = (
+                select(ChatMember.user_id)
+                .where(ChatMember.chat_id == chat_id)
+            )
+            result = await session.execute(stmt)
+            return result.scalars().all() if result else None

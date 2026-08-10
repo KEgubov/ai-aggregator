@@ -39,6 +39,7 @@ async def init_services(app: FastAPI):
     )
     app.state.user_service = UserService(
         user_repository=UserRepository(),
+        redis_client=redis_client
     )
     app.state.model_service = ModelService(
         model_repository=ModelRepository(),

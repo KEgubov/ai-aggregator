@@ -57,10 +57,12 @@ class ChatService:
 
     async def response_delete_chat(self, chat_id: int, user_id: int) -> bool:
         """Удаляет чат владельца; True при успехе, False если чат не найден."""
+        member_id = await self.chat_repository.get_chat_member_ids(chat_id)
         response = await self.chat_repository.delete_chat_in_db(chat_id, user_id)
         if not response:
             return False
-        await self.redis_client.delete_key(RedisKeys.all_chats(user_id))
+        for uid in member_id:
+            await self.redis_client.delete_key(RedisKeys.all_chats(uid))
         return True
 
     async def validate_chat_members(self, chat_id: int) -> list[ChatMemberDTO] | None:
