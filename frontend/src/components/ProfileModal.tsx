@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, CalendarDays, Clock3, Loader2, Mail, Pencil, UserRound } from 'lucide-react';
 import { changeUsername, fetchProfile } from '../api/auth';
 import { ApiError } from '../api/client';
+import { useModalPresence } from '../hooks/useModalPresence';
 import { initialsFromName, type UserProfile } from '../types/user';
 
 const COLORS = {
@@ -49,6 +50,8 @@ export default function ProfileModal({ open, onClose, onUsernameChange }: Profil
   const [nameSuccess, setNameSuccess] = useState<string | null>(null);
   const [isSavingName, setIsSavingName] = useState(false);
 
+  const { mounted, entered } = useModalPresence(open);
+
   const loadProfile = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -76,7 +79,7 @@ export default function ProfileModal({ open, onClose, onUsernameChange }: Profil
   }, [open, loadProfile]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!mounted) return;
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape' && !isSavingName) {
@@ -91,7 +94,7 @@ export default function ProfileModal({ open, onClose, onUsernameChange }: Profil
       document.body.style.overflow = prevOverflow;
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, isSavingName, onClose]);
+  }, [mounted, isSavingName, onClose]);
 
   async function handleSaveUsername(e: FormEvent) {
     e.preventDefault();
@@ -150,24 +153,28 @@ export default function ProfileModal({ open, onClose, onUsernameChange }: Profil
     onClose();
   }
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(1px)',
-        WebkitBackdropFilter: 'blur(1px)',
-      }}
-      onClick={handleBackdropClose}
       role="presentation"
     >
+      <div
+        className={`absolute inset-0 modal-backdrop${entered ? ' modal-backdrop-open' : ''}`}
+        style={{
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(1px)',
+          WebkitBackdropFilter: 'blur(1px)',
+        }}
+        onClick={handleBackdropClose}
+        aria-hidden
+      />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="profile-modal-title"
-        className="w-full max-w-md max-h-[min(90dvh,760px)] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+        className={`relative w-full max-w-md max-h-[min(90dvh,760px)] rounded-3xl shadow-2xl overflow-hidden flex flex-col modal-panel${entered ? ' modal-panel-open' : ''}`}
         style={{
           background: COLORS.modal,
           border: `1px solid ${COLORS.border}`,

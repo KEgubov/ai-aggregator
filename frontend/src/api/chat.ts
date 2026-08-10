@@ -16,20 +16,14 @@ interface MembersResponse {
   members: ChatMember[];
 }
 
-export interface CreateChatPayload {
-  name: string;
-  description?: string | null;
-}
-
 export async function fetchChats(): Promise<Chat[]> {
   const data = await apiFetch<ChatsResponse>('/chat/all');
   return data.chats ?? [];
 }
 
-export async function createChat(payload: CreateChatPayload): Promise<Chat> {
+export async function createChat(): Promise<Chat> {
   const data = await apiFetch<CreateChatResponse>('/chat/create', {
     method: 'POST',
-    body: JSON.stringify(payload),
   });
   return data.chat;
 }
@@ -76,4 +70,19 @@ export async function joinChat(token: string): Promise<Chat> {
     method: 'POST',
   });
   return data.chat;
+}
+
+interface RenameChatResponse {
+  status: string;
+  renamed_chat: Chat;
+}
+
+/** Переименовывает чат (только владелец). */
+export async function renameChat(chatId: number, name: string): Promise<Chat> {
+  const params = new URLSearchParams({ name });
+  const data = await apiFetch<RenameChatResponse>(
+    `/chat/${chatId}/rename?${params.toString()}`,
+    { method: 'PATCH' },
+  );
+  return data.renamed_chat;
 }

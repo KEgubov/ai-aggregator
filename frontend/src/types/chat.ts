@@ -10,4 +10,5 @@ export interface Chat {
 export interface ChatMember {
   username: string;
   about_me: string;
+  is_owner: boolean;
 }

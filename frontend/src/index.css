@@ -30,6 +30,16 @@ body {
   overscroll-behavior: none;
 }
 
+::selection {
+  background: #F5A623;
+  color: #1a1a1a;
+}
+
+::-moz-selection {
+  background: #F5A623;
+  color: #1a1a1a;
+}
+
 /* Единый тёмный стиль скроллбаров */
 * {
   scrollbar-width: thin;
@@ -66,4 +76,141 @@ body {
   display: none;
   width: 0;
   height: 0;
+}
+
+/* ---- Motion tokens ---- */
+:root {
+  --motion-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-fast: 180ms;
+  --motion-modal: 220ms;
+  --motion-view: 240ms;
+}
+
+/* Modal enter / exit */
+.modal-backdrop {
+  opacity: 0;
+  transition: opacity var(--motion-modal) var(--motion-ease);
+}
+
+.modal-backdrop-open {
+  opacity: 1;
+}
+
+.modal-panel {
+  opacity: 0;
+  transform: scale(0.96) translateY(10px);
+  transition:
+    opacity var(--motion-modal) var(--motion-ease),
+    transform var(--motion-modal) var(--motion-ease);
+}
+
+.modal-panel-open {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+/* Popover / account menu */
+.menu-pop {
+  transform-origin: bottom center;
+  animation: menu-pop-in var(--motion-fast) var(--motion-ease) both;
+}
+
+@keyframes menu-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Sidebar chat list items */
+.chat-list-item {
+  animation: chat-item-in var(--motion-modal) var(--motion-ease) both;
+}
+
+.chat-list-item-exit {
+  animation: chat-item-out var(--motion-fast) ease-in both;
+  pointer-events: none;
+}
+
+@keyframes chat-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes chat-item-out {
+  to {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.98);
+  }
+}
+
+/* Main pane: View Transition API (chat switch / home ↔ conversation) */
+.chat-main-surface {
+  height: 100%;
+  view-transition-name: chat-main;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(chat-main) {
+  animation-duration: var(--motion-view);
+  animation-timing-function: var(--motion-ease);
+}
+
+::view-transition-old(chat-main) {
+  animation: chat-vt-out var(--motion-view) var(--motion-ease) both;
+}
+
+::view-transition-new(chat-main) {
+  animation: chat-vt-in var(--motion-view) var(--motion-ease) both;
+}
+
+@keyframes chat-vt-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+}
+
+@keyframes chat-vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-panel,
+  .menu-pop,
+  .chat-list-item,
+  .chat-list-item-exit {
+    transition: none !important;
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .chat-main-surface {
+    view-transition-name: none;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }

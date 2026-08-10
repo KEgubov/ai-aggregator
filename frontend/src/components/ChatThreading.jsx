@@ -400,12 +400,78 @@ const GENERATING_DOT_STYLES = `
   background: #fbbf24;
   animation: chat-generating-pulse 1.05s ease-in-out infinite;
 }
+
+@keyframes msg-user-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes msg-ai-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes msg-ai-body-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.msg-enter-user {
+  transform-origin: bottom right;
+  animation: msg-user-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.msg-enter-user-other {
+  transform-origin: bottom left;
+  animation: msg-user-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.msg-enter-ai {
+  animation: msg-ai-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.msg-enter-ai-body {
+  animation: msg-ai-body-in 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-generating-dot,
+  .msg-enter-user,
+  .msg-enter-user-other,
+  .msg-enter-ai,
+  .msg-enter-ai-body {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
 `;
+
+function isLocalMessageId(id) {
+  return typeof id === 'string' && id.startsWith('local-');
+}
 
 function GeneratingDot() {
   return (
     <div className="pl-9 py-3" aria-label="Генерирует ответ" role="status">
-      <style>{GENERATING_DOT_STYLES}</style>
       <span className="chat-generating-dot" />
     </div>
   );
@@ -551,7 +617,7 @@ function MessageMoreMenu({ createdAt, branchActive, onBranch }) {
       {open && (
         <div
           role="menu"
-          className="absolute left-0 bottom-full mb-2 z-30 min-w-[220px] rounded-xl py-1.5 shadow-2xl"
+          className="absolute left-0 bottom-full mb-2 z-30 min-w-[220px] rounded-xl py-1.5 shadow-2xl menu-pop"
           style={{
             background: COLORS.menuBg,
             border: `1px solid ${COLORS.menuBorder}`,
@@ -616,10 +682,18 @@ function ResponseFooter({ text, modelName, createdAt, active, onBranch, userInit
   );
 }
 
-function UserBubble({ text, isMe, userInitials }) {
+function UserBubble({ text, isMe, userInitials, animate }) {
   const radius = isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px';
   return (
-    <div className={`flex w-full min-w-0 ${isMe ? 'justify-end' : 'justify-start'}`}>
+    <div
+      className={[
+        'flex w-full min-w-0',
+        isMe ? 'justify-end' : 'justify-start',
+        animate ? (isMe ? 'msg-enter-user' : 'msg-enter-user-other') : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <div className={`flex items-end gap-2 min-w-0 max-w-full ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
         <Avatar label={userInitials} isAI={false} size="md" />
         <div
@@ -649,21 +723,29 @@ function AIResponse({
   footerActive,
   onFooterOpen,
   userInitials,
+  animate,
 }) {
   const waitingForFirstToken = isStreaming && !text?.trim();
+  const hadBodyRef = useRef(!waitingForFirstToken);
+  const bodyJustAppeared = !waitingForFirstToken && !hadBodyRef.current;
+  if (!waitingForFirstToken) {
+    hadBodyRef.current = true;
+  }
 
   return (
-    <div className="py-1">
+    <div className={['py-1', animate ? 'msg-enter-ai' : ''].filter(Boolean).join(' ')}>
       {waitingForFirstToken ? (
         <GeneratingDot />
       ) : (
-        <Paragraph
-          id={`msg-${messageId}`}
-          text={text}
-          activeThread={activeThread}
-          onOpen={onThreadOpen}
-          userInitials={userInitials}
-        />
+        <div className={bodyJustAppeared ? 'msg-enter-ai-body' : undefined}>
+          <Paragraph
+            id={`msg-${messageId}`}
+            text={text}
+            activeThread={activeThread}
+            onOpen={onThreadOpen}
+            userInitials={userInitials}
+          />
+        </div>
       )}
       {!isStreaming && (
         <ResponseFooter
@@ -697,6 +779,8 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
+      <style>{GENERATING_DOT_STYLES}</style>
+
       {messages.length === 0 && (
         <p className="text-center text-sm py-16" style={{ color: '#737373' }}>
           Начните диалог — введите сообщение или наберите @ для выбора модели
@@ -704,6 +788,8 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
       )}
 
       {messages.map((msg) => {
+        const animate = isLocalMessageId(msg.id);
+
         if (msg.type === 'user') {
           const mine = msg.isMe === true;
           return (
@@ -712,6 +798,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
               text={msg.text}
               isMe={mine}
               userInitials={mine ? userInitials : (msg.authorInitials || '?')}
+              animate={animate}
             />
           );
         }
@@ -729,6 +816,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
             footerActive={!!footerActive[msg.id]}
             onFooterOpen={() => onFooterOpen(msg.id)}
             userInitials={userInitials}
+            animate={animate}
           />
         );
       })}

@@ -15,33 +15,53 @@ const COLORS = {
 
 interface ChatMembersAvatarsProps {
   chatId: number;
-  /** Имя текущего пользователя — в личных чатах это владелец. */
-  ownerUsername?: string;
+  /** Username текущего пользователя — чтобы понять, владелец ли он. */
+  currentUsername?: string;
+  onOwnershipChange?: (isOwner: boolean) => void;
 }
 
-export default function ChatMembersAvatars({ chatId, ownerUsername }: ChatMembersAvatarsProps) {
+export default function ChatMembersAvatars({
+  chatId,
+  currentUsername,
+  onOwnershipChange,
+}: ChatMembersAvatarsProps) {
   const [members, setMembers] = useState<ChatMember[]>([]);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const onOwnershipChangeRef = useRef(onOwnershipChange);
+  onOwnershipChangeRef.current = onOwnershipChange;
 
   useEffect(() => {
     let cancelled = false;
     setMembers([]);
     setOpenKey(null);
+    onOwnershipChangeRef.current?.(false);
 
     void (async () => {
       try {
         const data = await fetchChatMembers(chatId);
-        if (!cancelled) setMembers(data);
+        if (cancelled) return;
+        setMembers(data);
+        const me = currentUsername?.trim().toLowerCase() ?? '';
+        const isOwner = Boolean(
+          me &&
+            data.some(
+              (m) => m.is_owner && m.username.trim().toLowerCase() === me,
+            ),
+        );
+        onOwnershipChangeRef.current?.(isOwner);
       } catch {
-        if (!cancelled) setMembers([]);
+        if (!cancelled) {
+          setMembers([]);
+          onOwnershipChangeRef.current?.(false);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [chatId]);
+  }, [chatId, currentUsername]);
 
   useEffect(() => {
     if (openKey == null) return;
@@ -65,16 +85,10 @@ export default function ChatMembersAvatars({ chatId, ownerUsername }: ChatMember
   }, [openKey]);
 
   const { owner, others } = useMemo(() => {
-    const ownerName = ownerUsername?.trim().toLowerCase() ?? '';
-    const ownerMember =
-      (ownerName
-        ? members.find((m) => m.username.trim().toLowerCase() === ownerName)
-        : null) ??
-      members[0] ??
-      null;
+    const ownerMember = members.find((m) => m.is_owner) ?? members[0] ?? null;
     const rest = members.filter((m) => m !== ownerMember);
     return { owner: ownerMember, others: rest };
-  }, [members, ownerUsername]);
+  }, [members]);
 
   if (!owner && others.length === 0) return null;
 
@@ -93,7 +107,6 @@ export default function ChatMembersAvatars({ chatId, ownerUsername }: ChatMember
         />
       )}
 
-      {/* Точка справа от владельца */}
       {owner && (
         <span
           className="shrink-0 w-[3px] h-[3px] rounded-full"
@@ -165,6 +178,7 @@ function MemberAvatar({ member, zIndex, open, onToggle }: MemberAvatarProps) {
         >
           <p className="text-xs font-medium truncate" style={{ color: COLORS.text }}>
             {member.username}
+            {member.is_owner ? ' · владелец' : ''}
           </p>
           <p className="text-[11px] mt-0.5 leading-snug break-words" style={{ color: COLORS.muted }}>
             {member.about_me?.trim() || 'Нет описания'}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   Mic,
@@ -16,7 +16,13 @@ import {
 // ────────────────────────────────────────────────────────────────────────────
 
 const CHAT_INPUT_STYLES = `
-.cip-root { position: relative; width: 100%; max-width: 36rem; margin: 0 auto; }
+.cip-root {
+  position: relative;
+  width: 100%;
+  max-width: 36rem;
+  margin: 0 auto;
+  animation: cip-rise-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
 
 .cip-box {
   position: relative;
@@ -25,9 +31,21 @@ const CHAT_INPUT_STYLES = `
   border-radius: 24px;
   padding: 6px;
   overflow: hidden;
+  transition:
+    border-color 180ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 180ms cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 180ms ease;
+}
+.cip-box.cip-animating-height {
+  /* Пока анимируем высоту — не даём контенту вылезать за рамку */
+  overflow: hidden;
 }
 .cip-box.cip-row { min-height: 48px; display: flex; align-items: center; gap: 8px; }
 .cip-box.cip-col { display: flex; flex-direction: column; gap: 6px; min-height: 48px; }
+.cip-box:focus-within {
+  border-color: #5a5a5a;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.22), 0 10px 28px rgba(0, 0, 0, 0.28);
+}
 
 .cip-icon-btn {
   flex-shrink: 0;
@@ -40,16 +58,44 @@ const CHAT_INPUT_STYLES = `
   border: none;
   color: #C7C7C7;
   cursor: pointer;
-  transition: background-color .1s ease;
+  transition:
+    background-color .15s ease,
+    color .15s ease,
+    transform .15s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity .15s ease;
   padding: 0;
 }
 .cip-icon-btn:hover { background: #424242; }
+.cip-icon-btn:active { transform: scale(0.94); }
 
-.cip-send-cluster { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.cip-send-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  animation: cip-fade-scale-in 180ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
 .cip-separator-dot { width: 4px; height: 4px; border-radius: 999px; background: #2D2D2D; flex-shrink: 0; }
-.cip-send-label { font-size: 14px; color: #C7C7C7; white-space: nowrap; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
-.cip-send-btn { background: #F5A623; color: #1a1a1a; }
+.cip-send-label {
+  font-size: 14px;
+  color: #C7C7C7;
+  white-space: nowrap;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color .15s ease;
+}
+.cip-send-btn {
+  background: #F5A623;
+  color: #1a1a1a;
+  transition:
+    background-color .15s ease,
+    transform .15s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity .15s ease;
+}
 .cip-send-btn:hover { background: #ffb64a; }
+.cip-send-btn:active:not(:disabled) { transform: scale(0.94); }
+.cip-send-btn:disabled { opacity: 0.55; cursor: default; }
 
 @media (max-width: 480px) {
   .cip-send-label,
@@ -57,7 +103,13 @@ const CHAT_INPUT_STYLES = `
   .cip-menu { max-width: 100%; }
 }
 
-.cip-controls-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cip-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  animation: cip-fade-in 160ms ease both;
+}
 
 /* Привязанная модель — над полем ввода, живёт между отправками */
 .cip-bound-row {
@@ -66,6 +118,7 @@ const CHAT_INPUT_STYLES = `
   align-items: center;
   gap: 6px;
   padding: 4px 6px 0;
+  animation: cip-bound-in 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 .cip-bound-tag {
   display: inline-flex;
@@ -77,6 +130,7 @@ const CHAT_INPUT_STYLES = `
   color: #FFBC50;
   font-size: 14px;
   line-height: 20px;
+  transition: background-color .12s ease;
 }
 .cip-bound-tag:hover { background: rgba(255, 188, 80, 0.08); }
 .cip-bound-tag-icon {
@@ -144,6 +198,7 @@ const CHAT_INPUT_STYLES = `
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: opacity .15s ease, color .15s ease;
 }
 
 /* Скрытый клон-измеритель: та же ширина, что и текстовая колонка в РАЗВЁРНУТОМ
@@ -179,6 +234,8 @@ const CHAT_INPUT_STYLES = `
   box-shadow: 0 20px 40px rgba(0,0,0,.5);
   z-index: 50;
   overflow: hidden;
+  transform-origin: bottom left;
+  animation: cip-menu-in 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 .cip-menu-scroll {
   max-height: 290px;
@@ -215,13 +272,13 @@ const CHAT_INPUT_STYLES = `
   border: none;
   cursor: pointer;
   text-align: left;
-  transition: background-color .1s ease;
+  transition: background-color .12s ease;
 }
 .cip-menu-row.cip-active { background: #3C3C3C; }
 .cip-row-name { font-size: 14px; color: #EDEDED; display: block; }
 .cip-row-sub { font-size: 12px; color: #949494; display: block; }
 .cip-row-count { font-size: 12px; color: #949494; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.cip-dot { width: 6px; height: 6px; border-radius: 999px; background: #6B6B6B; }
+.cip-dot { width: 6px; height: 6px; border-radius: 999px; background: #6B6B6B; transition: background-color .15s ease; }
 .cip-dot.cip-on { background: #F5A623; }
 .cip-no-results { padding: 24px 12px; text-align: center; color: #949494; font-size: 13px; }
 
@@ -236,6 +293,7 @@ const CHAT_INPUT_STYLES = `
   vertical-align: -3px;
   margin: 0 1px;
   line-height: 24px;
+  animation: cip-fade-scale-in 160ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 .cip-token-icon {
   position: relative;
@@ -258,6 +316,84 @@ const CHAT_INPUT_STYLES = `
 .cip-token-name { color: #FFBC50; cursor: pointer; }
 
 .cip-mention-live { color: #FFBC50; }
+
+@keyframes cip-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes cip-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes cip-bound-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cip-fade-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cip-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cip-root,
+  .cip-menu,
+  .cip-bound-row,
+  .cip-send-cluster,
+  .cip-controls-row,
+  .cip-token {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .cip-box,
+  .cip-icon-btn,
+  .cip-send-btn,
+  .cip-send-label,
+  .cip-placeholder,
+  .cip-menu-row,
+  .cip-bound-tag {
+    transition: none !important;
+  }
+  .cip-box {
+    height: auto !important;
+  }
+  .cip-icon-btn:active,
+  .cip-send-btn:active:not(:disabled) {
+    transform: none !important;
+  }
+}
 `;
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -620,6 +756,9 @@ function ChatInput({
 }: ChatInputProps) {
   const inputRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const boxHeightRef = useRef<number | null>(null);
+  const heightAnimGenRef = useRef(0);
   const mentionRef = useRef<MentionAnchor>({ mode: 'none' });
 
   const [isEmpty, setIsEmpty] = useState(true);
@@ -650,6 +789,65 @@ function ChatInput({
     }
   }, []);
 
+  /** Плавная высота box при row↔col и при росте строк (FLIP: from → auto). */
+  const animateBoxHeight = useCallback(() => {
+    const el = boxRef.current;
+    if (!el) return;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      el.style.height = '';
+      el.style.transition = '';
+      el.classList.remove('cip-animating-height');
+      boxHeightRef.current = el.getBoundingClientRect().height;
+      return;
+    }
+
+    const from =
+      el.style.height !== ''
+        ? el.getBoundingClientRect().height
+        : (boxHeightRef.current ?? el.getBoundingClientRect().height);
+
+    el.style.transition = 'none';
+    el.style.height = 'auto';
+    const to = el.getBoundingClientRect().height;
+
+    if (boxHeightRef.current == null) {
+      boxHeightRef.current = to;
+      el.style.height = '';
+      el.style.transition = '';
+      el.classList.remove('cip-animating-height');
+      return;
+    }
+
+    if (Math.abs(from - to) < 0.5) {
+      el.style.height = '';
+      el.style.transition = '';
+      el.classList.remove('cip-animating-height');
+      boxHeightRef.current = to;
+      return;
+    }
+
+    el.style.height = `${from}px`;
+    el.classList.add('cip-animating-height');
+    void el.offsetHeight;
+
+    const gen = ++heightAnimGenRef.current;
+    el.style.transition = 'height 220ms cubic-bezier(0.32, 0.72, 0, 1)';
+    el.style.height = `${to}px`;
+    boxHeightRef.current = to;
+
+    const onEnd = (event: TransitionEvent) => {
+      if (event.target !== el || event.propertyName !== 'height') return;
+      if (gen !== heightAnimGenRef.current) return;
+      el.style.height = '';
+      el.style.transition = '';
+      el.classList.remove('cip-animating-height');
+      boxHeightRef.current = el.getBoundingClientRect().height;
+      el.removeEventListener('transitionend', onEnd);
+    };
+    el.addEventListener('transitionend', onEnd);
+  }, []);
+
   // Развёрнутая (col) раскладка: при любом контенте — иначе боковые кнопки в row
   // сжимают поле, текст переносится, а фиксированная высота даёт вылет наружу.
   // Дополнительно смотрим скрытый клон на случай, если контент выше одной строки
@@ -662,7 +860,10 @@ function ChatInput({
     const hasContent = !isRootEmpty(editable);
     const wrapsAtFullWidth = measure.scrollHeight > 44;
     setIsMultiline(hasContent || wrapsAtFullWidth);
-  }, []);
+    requestAnimationFrame(() => {
+      animateBoxHeight();
+    });
+  }, [animateBoxHeight]);
 
   const closeMenu = useCallback(() => {
     setShowMenu(false);
@@ -988,7 +1189,10 @@ function ChatInput({
     setMentionActive(false);
     closeMenu();
     root.blur();
-  }, [onSend, modelTokenNames, memberTokenNames, closeMenu]);
+    requestAnimationFrame(() => {
+      animateBoxHeight();
+    });
+  }, [onSend, modelTokenNames, memberTokenNames, closeMenu, animateBoxHeight]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1056,6 +1260,10 @@ function ChatInput({
   // Привязанная модель всегда держит col-раскладку (тег сверху, как на макете)
   const expanded = isMultiline || !isEmpty || hasBoundModel;
 
+  useLayoutEffect(() => {
+    animateBoxHeight();
+  }, [expanded, hasBoundModel, animateBoxHeight]);
+
   const effectivePlaceholder = hasBoundModel
     ? `Ask ${boundModel.name}`
     : placeholder;
@@ -1073,7 +1281,6 @@ function ChatInput({
         disabled={isEmpty}
         aria-label={sendConfig.label}
         className="cip-icon-btn cip-send-btn"
-        style={isEmpty ? { opacity: 0.55, cursor: 'default' } : undefined}
       >
         {sendConfig.icon === 'debate' && <Users size={16} />}
         {sendConfig.icon === 'model' && <Bot size={16} />}
@@ -1101,7 +1308,10 @@ function ChatInput({
         />
       )}
 
-      <div className={`cip-box ${expanded ? 'cip-col' : 'cip-row'}`}>
+      <div
+        ref={boxRef}
+        className={`cip-box ${expanded ? 'cip-col' : 'cip-row'}`}
+      >
         {hasBoundModel && (
           <div className="cip-bound-row">
             <div className="cip-bound-tag">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Loader2, LogOut, MessageSquarePlus, MessagesSquare, Trash2, UserRound, X } from 'lucide-react';
 import { createChat, deleteChat } from '../api/chat';
 import { ApiError } from '../api/client';
@@ -17,6 +17,9 @@ const COLORS = {
   nested: '#1f1f1f',
 };
 
+/** Keep in sync with `.chat-list-item-exit` in index.css */
+const CHAT_ITEM_EXIT_MS = 180;
+
 interface SidebarProps {
   isOpen: boolean;
   chats: Chat[];
@@ -25,7 +28,6 @@ interface SidebarProps {
   userInitials: string;
   userLabel: string;
   profileActive: boolean;
-  openCreateRequest?: number;
   onClose: () => void;
   onSelectChat: (chat: Chat) => void;
   onChatCreated: (chat: Chat) => void;
@@ -33,7 +35,6 @@ interface SidebarProps {
   onOpenProfile: () => void;
   onLogout: () => void;
   onRefresh: () => void;
-  onNewChatHome: () => void;
 }
 
 export default function Sidebar({
@@ -44,7 +45,6 @@ export default function Sidebar({
   userInitials,
   userLabel,
   profileActive,
-  openCreateRequest = 0,
   onClose,
   onSelectChat,
   onChatCreated,
@@ -52,24 +52,28 @@ export default function Sidebar({
   onOpenProfile,
   onLogout,
   onRefresh,
-  onNewChatHome,
 }: SidebarProps) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [deletingChatId, setDeletingChatId] = useState<number | null>(null);
+  const [exitingChatId, setExitingChatId] = useState<number | null>(null);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  const knownChatIdsRef = useRef<Set<number> | null>(null);
+
+  if (knownChatIdsRef.current === null) {
+    knownChatIdsRef.current = new Set(chats.map((chat) => chat.chat_id));
+  }
 
   useEffect(() => {
-    if (openCreateRequest > 0) {
-      setShowCreate(true);
-      setError(null);
+    const known = knownChatIdsRef.current;
+    if (!known) return;
+    const currentIds = new Set(chats.map((chat) => chat.chat_id));
+    for (const id of [...known]) {
+      if (!currentIds.has(id)) known.delete(id);
     }
-  }, [openCreateRequest]);
+  }, [chats]);
 
   useEffect(() => {
     if (!accountMenuOpen) return;
@@ -96,21 +100,13 @@ export default function Sidebar({
     if (!isOpen) setAccountMenuOpen(false);
   }, [isOpen]);
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName) return;
+  async function handleCreate() {
+    if (isCreating) return;
 
     setError(null);
     setIsCreating(true);
     try {
-      const chat = await createChat({
-        name: trimmedName,
-        description: description.trim() || null,
-      });
-      setName('');
-      setDescription('');
-      setShowCreate(false);
+      const chat = await createChat();
       onChatCreated(chat);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -132,12 +128,18 @@ export default function Sidebar({
   async function confirmDelete() {
     if (!chatToDelete) return;
 
+    const deletedId = chatToDelete.chat_id;
     setError(null);
-    setDeletingChatId(chatToDelete.chat_id);
+    setDeletingChatId(deletedId);
     try {
-      await deleteChat(chatToDelete.chat_id);
-      onChatDeleted(chatToDelete.chat_id);
+      await deleteChat(deletedId);
       setChatToDelete(null);
+      setExitingChatId(deletedId);
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, CHAT_ITEM_EXIT_MS);
+      });
+      onChatDeleted(deletedId);
+      setExitingChatId(null);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -170,12 +172,9 @@ export default function Sidebar({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              setShowCreate(true);
-              setError(null);
-              onNewChatHome();
-            }}
-            className="flex-1 min-w-0 rounded-xl px-3 py-2.5 flex items-center gap-2.5 text-left transition-colors"
+            onClick={() => void handleCreate()}
+            disabled={isCreating}
+            className="flex-1 min-w-0 rounded-xl px-3 py-2.5 flex items-center gap-2.5 text-left transition-colors disabled:opacity-60"
             style={{
               background: COLORS.box,
               border: `1px solid ${COLORS.border}`,
@@ -188,7 +187,11 @@ export default function Sidebar({
               e.currentTarget.style.borderColor = COLORS.border;
             }}
           >
-            <MessageSquarePlus className="w-4 h-4 shrink-0" style={{ color: COLORS.accent }} />
+            {isCreating ? (
+              <Loader2 className="w-4 h-4 shrink-0 animate-spin" style={{ color: COLORS.accent }} />
+            ) : (
+              <MessageSquarePlus className="w-4 h-4 shrink-0" style={{ color: COLORS.accent }} />
+            )}
             <span className="text-sm font-medium">Новый чат</span>
           </button>
           <button
@@ -211,82 +214,6 @@ export default function Sidebar({
             <X className="w-4 h-4" />
           </button>
         </div>
-
-        {showCreate && (
-          <form
-            onSubmit={handleCreate}
-            className="rounded-xl p-3 space-y-3"
-            style={{ background: COLORS.box, border: `1px solid ${COLORS.border}` }}
-          >
-            <label className="block">
-              <span className="text-[11px] mb-1 block" style={{ color: COLORS.muted }}>
-                Название
-              </span>
-              <input
-                type="text"
-                required
-                maxLength={255}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                style={{
-                  background: COLORS.nested,
-                  border: `1px solid ${COLORS.border}`,
-                  color: COLORS.text,
-                }}
-                placeholder="Название чата"
-                autoFocus
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-[11px] mb-1 block" style={{ color: COLORS.muted }}>
-                Описание
-              </span>
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                style={{
-                  background: COLORS.nested,
-                  border: `1px solid ${COLORS.border}`,
-                  color: COLORS.text,
-                }}
-                placeholder="Необязательно"
-              />
-            </label>
-
-            {error && (
-              <p className="text-xs" style={{ color: COLORS.error }}>
-                {error}
-              </p>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreate(false);
-                  setError(null);
-                }}
-                className="flex-1 rounded-lg py-2 text-xs"
-                style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}
-              >
-                Отмена
-              </button>
-              <button
-                type="submit"
-                disabled={isCreating}
-                className="flex-1 rounded-lg py-2 text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-60"
-                style={{ background: COLORS.accent, color: '#1a1a1a' }}
-              >
-                {isCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                Создать
-              </button>
-            </div>
-          </form>
-        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
@@ -306,10 +233,18 @@ export default function Sidebar({
           <div className="space-y-0.5">
             {chats.map((chat) => {
               const isActive = activeChatId === chat.chat_id;
+              const isExiting = exitingChatId === chat.chat_id;
+              const isNew = !knownChatIdsRef.current?.has(chat.chat_id);
               return (
                 <div
                   key={chat.chat_id}
-                  className="group relative flex items-center rounded-lg"
+                  className={[
+                    'group relative flex items-center rounded-lg overflow-hidden',
+                    isNew ? 'chat-list-item' : '',
+                    isExiting ? 'chat-list-item-exit' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   style={{
                     background: isActive ? COLORS.box : 'transparent',
                   }}
@@ -369,7 +304,7 @@ export default function Sidebar({
           </div>
         )}
 
-        {error && !showCreate && (
+        {error && (
           <p className="px-2 pt-2 text-xs text-center" style={{ color: COLORS.error }}>
             {error}
           </p>
@@ -396,7 +331,7 @@ export default function Sidebar({
           <div
             role="menu"
             aria-label="Меню аккаунта"
-            className="absolute left-2 right-2 bottom-[calc(100%+6px)] rounded-2xl py-1.5 shadow-2xl z-20 overflow-hidden"
+            className="absolute left-2 right-2 bottom-[calc(100%+6px)] rounded-2xl py-1.5 shadow-2xl z-20 overflow-hidden menu-pop"
             style={{
               background: COLORS.menu,
               border: `1px solid ${COLORS.border}`,

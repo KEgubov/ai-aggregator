@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2 } from 'lucide-react';
+import { useModalPresence } from '../hooks/useModalPresence';
 
 const COLORS = {
   box: '#2D2D2D',
@@ -35,9 +36,10 @@ export default function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const { mounted, entered } = useModalPresence(open);
 
   useEffect(() => {
-    if (!open) return;
+    if (!mounted || !entered) return;
 
     cancelRef.current?.focus();
 
@@ -49,28 +51,32 @@ export default function ConfirmDialog({
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, isLoading, onCancel]);
+  }, [mounted, entered, isLoading, onCancel]);
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   const confirmBg = variant === 'danger' ? COLORS.error : COLORS.accent;
-  const confirmText = variant === 'danger' ? '#1a1a1a' : '#1a1a1a';
+  const confirmText = '#1a1a1a';
 
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0, 0, 0, 0.72)' }}
-      onClick={() => {
-        if (!isLoading) onCancel();
-      }}
       role="presentation"
     >
+      <div
+        className={`absolute inset-0 modal-backdrop${entered ? ' modal-backdrop-open' : ''}`}
+        style={{ background: 'rgba(0, 0, 0, 0.72)' }}
+        onClick={() => {
+          if (!isLoading) onCancel();
+        }}
+        aria-hidden
+      />
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-description"
-        className="w-full max-w-md rounded-2xl p-5 shadow-2xl"
+        className={`relative w-full max-w-md rounded-2xl p-5 shadow-2xl modal-panel${entered ? ' modal-panel-open' : ''}`}
         style={{
           background: COLORS.box,
           border: `1px solid ${COLORS.border}`,

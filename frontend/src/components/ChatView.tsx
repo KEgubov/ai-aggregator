@@ -3,6 +3,7 @@ import { Brain, Gem, Link2, Rocket, Satellite, Sparkles, Zap, type LucideIcon } 
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
 import ChatMembersAvatars from './ChatMembersAvatars';
+import ChatInfoModal from './ChatInfoModal';
 import SidebarToggle from './SidebarToggle';
 import { createChatInvite } from '../api/chat';
 import { fetchModels, findModelByName, resolveModelDisplayName, type ApiModel } from '../api/models';
@@ -65,6 +66,7 @@ interface ChatViewProps {
   userInitials?: string;
   userLabel?: string;
   onToggleSidebar?: () => void;
+  onChatRenamed?: (chat: Chat) => void;
 }
 
 export default function ChatView({
@@ -73,6 +75,7 @@ export default function ChatView({
   userInitials = 'Я',
   userLabel,
   onToggleSidebar,
+  onChatRenamed,
 }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [apiModels, setApiModels] = useState<ApiModel[]>([]);
@@ -82,6 +85,7 @@ export default function ChatView({
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteHint, setInviteHint] = useState<string | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inviteHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,6 +96,10 @@ export default function ChatView({
   const streamSeqRef = useRef(0);
 
   messagesRef.current = messages;
+
+  useEffect(() => {
+    setInfoOpen(false);
+  }, [chat.chat_id]);
 
   const inputModels = useMemo(
     () => apiModels.map((model, index) => mapApiModelToInput(model, index)),
@@ -224,9 +232,20 @@ export default function ChatView({
         }
 
         if (payload.modelTokens.length === 0) {
-          await sendChatMessage({ chatId: chat.chat_id, content: text, parentId });
-          if (streamSeq !== streamSeqRef.current) return;
-          await reloadFromServer();
+          const userId = `local-user-${streamSeq}`;
+          setMessages((prev) => [
+            ...prev,
+            { id: userId, type: 'user', text, isMe: true },
+          ]);
+          try {
+            await sendChatMessage({ chatId: chat.chat_id, content: text, parentId });
+            if (streamSeq !== streamSeqRef.current) return;
+            await reloadFromServer();
+          } catch (err) {
+            if (streamSeq !== streamSeqRef.current) return;
+            setMessages((prev) => prev.filter((m) => m.id !== userId));
+            throw err;
+          }
           return;
         }
 
@@ -319,11 +338,23 @@ export default function ChatView({
         <div className="flex items-center gap-1 min-w-0">
           {onToggleSidebar && <SidebarToggle onClick={onToggleSidebar} />}
           <div className="flex items-center min-w-0 px-1.5 py-1">
-            <span className="text-[15px] font-semibold tracking-tight truncate" style={{ color: COLORS.text }}>
-              AI Aggregator
-            </span>
+            <button
+              type="button"
+              onClick={() => setInfoOpen(true)}
+              className="text-[15px] font-semibold tracking-tight truncate text-left rounded-md px-1 py-0.5 transition-colors max-w-[min(40vw,14rem)] sm:max-w-[18rem]"
+              style={{ color: COLORS.text }}
+              title={chat.name}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = COLORS.card;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              {chat.name}
+            </button>
           </div>
-          <ChatMembersAvatars chatId={chat.chat_id} ownerUsername={userLabel} />
+          <ChatMembersAvatars chatId={chat.chat_id} currentUsername={userLabel} />
           <div className="relative ml-auto shrink-0">
             <button
               type="button"
@@ -388,6 +419,14 @@ export default function ChatView({
           placeholder="Напишите сообщение или введите @ для выбора модели…"
         />
       </div>
+
+      <ChatInfoModal
+        open={infoOpen}
+        chat={chat}
+        currentUsername={userLabel}
+        onClose={() => setInfoOpen(false)}
+        onChatRenamed={onChatRenamed}
+      />
     </div>
   );
 }

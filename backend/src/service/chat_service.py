@@ -2,9 +2,9 @@ import uuid
 
 from backend.src.core.redis_keys import RedisKeys
 from backend.src.models.orm_models import Chat, ChatMember, ChatInviteLink
-from backend.src.schemas.chat_schema import ChatDTO, ChatAddDTO
+from backend.src.schemas.chat_schema import ChatDTO
 from backend.src.schemas.custom import ChatMemberDTO, ChatTokenDTO
-from backend.src.service.exceptions import NotFoundError
+from backend.src.service.exceptions import NotFoundError, ForbiddenError
 
 
 class ChatService:
@@ -15,18 +15,20 @@ class ChatService:
         self.redis_client = redis_client
 
     async def validate_create_chat(
-        self, chat: ChatAddDTO, owner_id: int
+        self, owner_id: int
     ) -> ChatDTO | None:
         """Создаёт чат и добавляет владельца в участники."""
+        name_chat = 'Новый чат'
         chat_model = Chat(
-            name=chat.name,
-            description=chat.description,
+            name=name_chat,
+            description=None,
             owner_id=owner_id,
         )
         added_chat = await self.chat_repository.create_chat(chat_model)
         chat_member = ChatMember(
             chat_id=added_chat.chat_id,
             user_id=owner_id,
+            is_owner=True,
         )
         create_member = await self.chat_repository.added_user_in_members(chat_member)
         await self.redis_client.delete_key(RedisKeys.all_chats(user_id=owner_id))
@@ -115,3 +117,17 @@ class ChatService:
                 result_dto = ChatDTO.model_validate(model_chat, from_attributes=True)
                 return result_dto
         return None
+
+    async def rename_chat(self, user_id: int, chat_id: int, name: str) -> ChatDTO | None:
+        is_owner = await self.chat_repository.is_owner_chat(user_id, chat_id)
+        if is_owner is False:
+            raise ForbiddenError(message="Only the chat owner can rename this chat")
+        renamed_chat = await self.chat_repository.rename_chat_in_db(chat_id, name)
+        if renamed_chat:
+            member_id = await self.chat_repository.get_chat_member_ids(chat_id)
+            for uid in member_id:
+                await self.redis_client.delete_key(RedisKeys.all_chats(uid))
+            result_dto = ChatDTO.model_validate(renamed_chat, from_attributes=True)
+            return result_dto
+        return None
+

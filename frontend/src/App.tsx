@@ -5,10 +5,11 @@ import ChatView from './components/ChatView';
 import ProfileModal from './components/ProfileModal';
 import Sidebar from './components/Sidebar';
 import { fetchProfile, logoutUser } from './api/auth';
-import { fetchChats, joinChat } from './api/chat';
+import { createChat, fetchChats, joinChat } from './api/chat';
 import { ApiError } from './api/client';
 import type { Chat } from './types/chat';
 import { initialsFromName } from './types/user';
+import { startViewTransition } from './utils/viewTransition';
 
 type AppView = 'loading' | 'auth' | 'chats' | 'conversation';
 
@@ -47,10 +48,10 @@ export default function App() {
   const [userInitials, setUserInitials] = useState(DEFAULT_INITIALS);
   const [userLabel, setUserLabel] = useState(DEFAULT_LABEL);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [openCreateRequest, setOpenCreateRequest] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(() => isDesktopViewport());
   const [profileOpen, setProfileOpen] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -99,9 +100,11 @@ export default function App() {
           if (prev.some((c) => c.chat_id === chat.chat_id)) return prev;
           return [chat, ...prev];
         });
-        setActiveChat(chat);
-        setView('conversation');
-        closeSidebarOnMobile();
+        startViewTransition(() => {
+          setActiveChat(chat);
+          setView('conversation');
+          closeSidebarOnMobile();
+        });
         return true;
       } catch (err) {
         sessionStorage.removeItem(PENDING_JOIN_TOKEN);
@@ -185,37 +188,48 @@ export default function App() {
 
   const handleSelectChat = useCallback(
     (chat: Chat) => {
-      setActiveChat(chat);
-      setView('conversation');
-      closeSidebarOnMobile();
+      startViewTransition(() => {
+        setActiveChat(chat);
+        setView('conversation');
+        closeSidebarOnMobile();
+      });
     },
     [closeSidebarOnMobile],
   );
 
   const handleChatCreated = useCallback(
     (chat: Chat) => {
-      setChats((prev) => [chat, ...prev]);
-      setActiveChat(chat);
-      setView('conversation');
-      closeSidebarOnMobile();
+      startViewTransition(() => {
+        setChats((prev) => [chat, ...prev]);
+        setActiveChat(chat);
+        setView('conversation');
+        closeSidebarOnMobile();
+      });
     },
     [closeSidebarOnMobile],
   );
 
-  const handleChatDeleted = useCallback((chatId: number) => {
-    setChats((prev) => prev.filter((chat) => chat.chat_id !== chatId));
-    setActiveChat((prev) => {
-      if (prev?.chat_id === chatId) {
-        setView('chats');
-        return null;
-      }
-      return prev;
-    });
-  }, []);
+  const handleChatDeleted = useCallback(
+    (chatId: number) => {
+      const wasActive = activeChat?.chat_id === chatId;
+      const update = () => {
+        setChats((prev) => prev.filter((chat) => chat.chat_id !== chatId));
+        if (wasActive) {
+          setActiveChat(null);
+          setView('chats');
+        }
+      };
+      if (wasActive) startViewTransition(update);
+      else update();
+    },
+    [activeChat?.chat_id],
+  );
 
-  const handleBackToChats = useCallback(() => {
-    setActiveChat(null);
-    setView('chats');
+  const handleChatRenamed = useCallback((chat: Chat) => {
+    setChats((prev) =>
+      prev.map((item) => (item.chat_id === chat.chat_id ? chat : item)),
+    );
+    setActiveChat((prev) => (prev?.chat_id === chat.chat_id ? chat : prev));
   }, []);
 
   const handleOpenProfile = useCallback(() => {
@@ -223,12 +237,19 @@ export default function App() {
     closeSidebarOnMobile();
   }, [closeSidebarOnMobile]);
 
-  const handleStartNewChat = useCallback(() => {
-    setOpenCreateRequest((n) => n + 1);
-    setActiveChat(null);
-    setView('chats');
-    setSidebarOpen(true);
-  }, []);
+  const handleStartNewChat = useCallback(async () => {
+    if (isCreatingChat) return;
+    setIsCreatingChat(true);
+    setJoinError(null);
+    try {
+      const chat = await createChat();
+      handleChatCreated(chat);
+    } catch (err) {
+      setJoinError(err instanceof Error ? err.message : 'Не удалось создать чат');
+    } finally {
+      setIsCreatingChat(false);
+    }
+  }, [handleChatCreated, isCreatingChat]);
 
   const handleToggleSidebar = useCallback(() => {
     setSidebarOpen((open) => !open);
@@ -269,7 +290,6 @@ export default function App() {
         userInitials={userInitials}
         userLabel={userLabel}
         profileActive={profileOpen}
-        openCreateRequest={openCreateRequest}
         onClose={() => setSidebarOpen(false)}
         onSelectChat={handleSelectChat}
         onChatCreated={handleChatCreated}
@@ -277,7 +297,6 @@ export default function App() {
         onOpenProfile={handleOpenProfile}
         onLogout={() => void handleLogout()}
         onRefresh={() => void loadChats()}
-        onNewChatHome={handleBackToChats}
       />
       <main className="flex-1 min-w-0 h-full relative">
         {joinError && (
@@ -298,17 +317,24 @@ export default function App() {
             </div>
           </div>
         )}
-        {view === 'conversation' && activeChat ? (
-          <ChatView
-            chat={activeChat}
-            currentUserId={currentUserId}
-            userInitials={userInitials}
-            userLabel={userLabel}
-            onToggleSidebar={handleToggleSidebar}
-          />
-        ) : (
-          <ChatHome onStartNewChat={handleStartNewChat} onToggleSidebar={handleToggleSidebar} />
-        )}
+        <div className="chat-main-surface">
+          {view === 'conversation' && activeChat ? (
+            <ChatView
+              chat={activeChat}
+              currentUserId={currentUserId}
+              userInitials={userInitials}
+              userLabel={userLabel}
+              onToggleSidebar={handleToggleSidebar}
+              onChatRenamed={handleChatRenamed}
+            />
+          ) : (
+            <ChatHome
+              onStartNewChat={() => void handleStartNewChat()}
+              isCreating={isCreatingChat}
+              onToggleSidebar={handleToggleSidebar}
+            />
+          )}
+        </div>
       </main>
 
       <ProfileModal

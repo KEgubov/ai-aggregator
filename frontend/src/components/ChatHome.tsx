@@ -1,4 +1,4 @@
-import { MessageSquarePlus } from 'lucide-react';
+import { Loader2, MessageSquarePlus } from 'lucide-react';
 import SidebarToggle from './SidebarToggle';
 
 const COLORS = {
@@ -11,10 +11,11 @@ const COLORS = {
 
 interface ChatHomeProps {
   onStartNewChat?: () => void;
+  isCreating?: boolean;
   onToggleSidebar?: () => void;
 }
 
-export default function ChatHome({ onStartNewChat, onToggleSidebar }: ChatHomeProps) {
+export default function ChatHome({ onStartNewChat, isCreating = false, onToggleSidebar }: ChatHomeProps) {
   return (
     <div className="h-full w-full bg-black text-white flex flex-col">
       {onToggleSidebar && (
@@ -42,7 +43,8 @@ export default function ChatHome({ onStartNewChat, onToggleSidebar }: ChatHomePr
           <button
             type="button"
             onClick={onStartNewChat}
-            className="mt-6 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
+            disabled={isCreating}
+            className="mt-6 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-60 flex items-center gap-2"
             style={{ background: COLORS.accent, color: '#1a1a1a' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#ffb64a';
@@ -51,6 +53,7 @@ export default function ChatHome({ onStartNewChat, onToggleSidebar }: ChatHomePr
               e.currentTarget.style.background = COLORS.accent;
             }}
           >
+            {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Новый чат
           </button>
         )}
