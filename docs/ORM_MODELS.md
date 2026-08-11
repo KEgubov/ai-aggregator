@@ -1,6 +1,6 @@
 # ORM-модели
 
-Документация по схеме базы данных приложения **AI Agregator**.
+Документация по схеме базы данных приложения **AI Aggregator**.
 
 Исходный код: [`backend/src/models/orm_models.py`](../backend/src/models/orm_models.py)
 
@@ -15,11 +15,11 @@
 | Блок | Таблицы | Назначение |
 |------|---------|------------|
 | Пользователи и проекты | `users`, `projects`, `project_members` | Аккаунты, рабочие пространства, участники проекта |
-| Чаты | `chats`, `project_chats`, `chat_members` | Личные и проектные чаты, участники проектных чатов |
+| Чаты | `chats`, `project_chats`, `chat_members`, `project_chat_members`, `chat_invite_links` | Личные и проектные чаты, участники, инвайт-ссылки личных чатов |
 | Каталог AI | `ai_providers`, `ai_models`, `ai_provider_models` | Провайдеры, модели, тарифы и возможности |
 | Диалог | `chat_messages`, `project_chat_messages` | Деревья сообщений в личных и проектных чатах |
 
-Всего **11 таблиц**.
+Всего **13 таблиц**.
 
 ### Два типа чатов
 
@@ -28,8 +28,9 @@
 | | Личный чат | Проектный чат |
 |---|---|---|
 | Таблица | `chats` → `Chat` | `project_chats` → `ProjectChat` |
-| Связь с пользователем | напрямую через `owner_id` | через `ProjectMember` → `Project`; участники чата — `ChatMember` |
-| Участники | нет (только владелец) | `ChatMember` (только проектные чаты) |
+| Связь с пользователем | `owner_id` + участники через `ChatMember` | через `ProjectMember` → `Project`; участники чата — `ProjectChatMember` |
+| Участники | `ChatMember` (только личные чаты) | `ProjectChatMember` (только проектные чаты) |
+| Инвайты | `ChatInviteLink` | нет |
 | Сообщения | `chat_messages` → `ChatMessage` | `project_chat_messages` → `ProjectChatMessage` |
 
 Иерархия данных:
@@ -37,13 +38,15 @@
 ```
 Личный чат:
   User → Chat → ChatMessage → ChatMessage (parent / children)
+  User → ChatMember → Chat
+  User → ChatInviteLink → Chat
 
 Проектный чат:
   User → ProjectMember → Project → ProjectChat
-  User → ChatMember → ProjectChat → ProjectChatMessage → …
+  User → ProjectChatMember → ProjectChat → ProjectChatMessage → …
 ```
 
-> Прямого `owner_id` у `ProjectChat` нет. `ChatMember` задаёт участников чата; пользователь должен быть в `ProjectMember` (проверка на уровне приложения).
+> Прямого `owner_id` у `ProjectChat` нет. `ProjectChatMember` задаёт участников чата; пользователь должен быть в `ProjectMember` (проверка на уровне приложения).
 
 ---
 
@@ -55,16 +58,20 @@ erDiagram
     users ||--o{ chats : "owner_id"
     users ||--o{ project_members : "user_id"
     users ||--o{ chat_members : "user_id"
+    users ||--o{ project_chat_members : "user_id"
+    users ||--o{ chat_invite_links : "created_by"
     users ||--o{ chat_messages : "author_id"
     users ||--o{ project_chat_messages : "author_id"
 
     projects ||--o{ project_members : "project_id"
     projects ||--o{ project_chats : "project_id"
 
+    chats ||--o{ chat_members : "chat_id"
+    chats ||--o{ chat_invite_links : "chat_id"
     chats ||--o{ chat_messages : "chat_id"
     chat_messages ||--o{ chat_messages : "parent_id"
 
-    project_chats ||--o{ chat_members : "chat_id"
+    project_chats ||--o{ project_chat_members : "chat_id"
     project_chats ||--o{ project_chat_messages : "chat_id"
     project_chat_messages ||--o{ project_chat_messages : "parent_id"
 
@@ -74,6 +81,7 @@ erDiagram
     users {
         int user_id PK
         varchar email UK
+        varchar password
         varchar username
         varchar about_me
         varchar avatar_url
@@ -120,6 +128,25 @@ erDiagram
         int chat_id PK_FK
         int user_id PK_FK
         timestamptz joined_at
+        bool is_owner
+    }
+
+    project_chat_members {
+        int chat_id PK_FK
+        int user_id PK_FK
+        timestamptz joined_at
+    }
+
+    chat_invite_links {
+        int invite_id PK
+        varchar token UK
+        int chat_id FK
+        int created_by FK
+        timestamptz created_at
+        timestamptz expires_at
+        bool is_revoked
+        int max_uses
+        int uses_count
     }
 
     chat_messages {
@@ -207,10 +234,18 @@ flowchart TB
 
     subgraph personal["Личный чат"]
         Chat["Chat\n(chats)"]
+        ChatMember["ChatMember\n(chat_members)"]
+        ChatInviteLink["ChatInviteLink\n(chat_invite_links)"]
         ChatMessage["ChatMessage\n(chat_messages)"]
 
         User -->|"owned_personal_chats\n1 → N"| Chat
         Chat -->|"owner\nN → 1"| User
+        Chat -->|"members\n1 → N\ncascade delete"| ChatMember
+        User -->|"chat_memberships\n1 → N"| ChatMember
+        ChatMember -->|"chat\nN → 1"| Chat
+        Chat -->|"invite_links\n1 → N\ncascade delete"| ChatInviteLink
+        ChatInviteLink -->|"chat\nN → 1"| Chat
+        ChatInviteLink -->|"creator\nN → 1"| User
         Chat -->|"messages\n1 → N\ncascade delete"| ChatMessage
         ChatMessage -->|"chat\nN → 1"| Chat
         User -->|"chat_messages\n1 → N"| ChatMessage
@@ -219,14 +254,14 @@ flowchart TB
 
     subgraph project_chats_block["Проектный чат"]
         ProjectChat["ProjectChat\n(project_chats)"]
-        ChatMember["ChatMember\n(chat_members)"]
+        ProjectChatMember["ProjectChatMember\n(project_chat_members)"]
         ProjectChatMessage["ProjectChatMessage\n(project_chat_messages)"]
 
         Project -->|"project_chats\n1 → N\ncascade delete"| ProjectChat
         ProjectChat -->|"project\nN → 1"| Project
-        ProjectChat -->|"members\n1 → N\ncascade delete"| ChatMember
-        User -->|"chat_memberships\n1 → N"| ChatMember
-        ChatMember -->|"chat\nN → 1"| ProjectChat
+        ProjectChat -->|"members\n1 → N\ncascade delete"| ProjectChatMember
+        User -->|"project_chat_memberships\n1 → N"| ProjectChatMember
+        ProjectChatMember -->|"chat\nN → 1"| ProjectChat
         ProjectChat -->|"messages\n1 → N\ncascade delete"| ProjectChatMessage
         ProjectChatMessage -->|"chat\nN → 1"| ProjectChat
         User -->|"project_chat_messages\n1 → N"| ProjectChatMessage
@@ -276,7 +311,7 @@ flowchart TD
 CREATE EXTENSION IF NOT EXISTS ltree;
 ```
 
-Скрипт [`backend/src/core/create_tables.py`](../backend/src/core/create_tables.py) включает его автоматически.
+Скрипт [`backend/src/utils/create_tables.py`](../backend/src/utils/create_tables.py) включает его автоматически.
 
 ---
 
@@ -284,12 +319,13 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 
 ### `users` — `User`
 
-Пользователь системы. Владелец проектов и личных чатов; к проектным чатам получает доступ только через членство в проекте.
+Пользователь системы. Владелец проектов и личных чатов; к проектным чатам получает доступ через членство в проекте и `ProjectChatMember`.
 
 | Поле | Тип | Ограничения | Описание |
 |------|-----|-------------|----------|
 | `user_id` | `INTEGER` | PK, autoincrement | Уникальный идентификатор |
 | `email` | `VARCHAR(255)` | NOT NULL, UNIQUE | Логин (email) |
+| `password` | `VARCHAR(255)` | NOT NULL | Хэш пароля |
 | `username` | `VARCHAR(100)` | NOT NULL | Отображаемое имя |
 | `about_me` | `VARCHAR(20)` | NOT NULL | Краткое описание о себе |
 | `avatar_url` | `VARCHAR` | nullable | Ссылка на аватар |
@@ -301,7 +337,8 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 | Атрибут | Связь | Тип | Описание |
 |---------|-------|-----|----------|
 | `project_memberships` | → `ProjectMember` | 1 → N | Членства в проектах |
-| `chat_memberships` | → `ChatMember` | 1 → N | Участие в проектных чатах |
+| `chat_memberships` | → `ChatMember` | 1 → N | Участие в личных чатах |
+| `project_chat_memberships` | → `ProjectChatMember` | 1 → N | Участие в проектных чатах |
 | `chat_messages` | → `ChatMessage` | 1 → N | Сообщения в личных чатах |
 | `project_chat_messages` | → `ProjectChatMessage` | 1 → N | Сообщения в проектных чатах (авторство) |
 | `owned_projects` | → `Project` | 1 → N | Проекты, где пользователь — владелец |
@@ -334,7 +371,7 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 
 ### `project_members` — `ProjectMember`
 
-Связующая таблица many-to-many между пользователями и проектами. Участие в конкретном проектном чате оформляется через `ChatMember`.
+Связующая таблица many-to-many между пользователями и проектами. Участие в конкретном проектном чате оформляется через `ProjectChatMember`.
 
 | Поле | Тип | Ограничения | Описание |
 |------|-----|-------------|----------|
@@ -355,7 +392,7 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 
 ### `chats` — `Chat`
 
-Личный чат вне проекта. Доступ только у владельца (`owner_id`); участников нет. Не связан с `project_chats`.
+Личный чат вне проекта. Владелец — `owner_id`; участники — через `ChatMember`. Не связан с `project_chats`.
 
 | Поле | Тип | Ограничения | Описание |
 |------|-----|-------------|----------|
@@ -372,13 +409,15 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 | Атрибут | Связь | Тип | Cascade | Описание |
 |---------|-------|-----|---------|----------|
 | `owner` | → `User` | N → 1 | — | Владелец чата |
+| `members` | → `ChatMember` | 1 → N | `all, delete-orphan` | Участники чата |
+| `invite_links` | → `ChatInviteLink` | 1 → N | `all, delete-orphan` | Инвайт-ссылки |
 | `messages` | → `ChatMessage` | 1 → N | `all, delete-orphan` | Сообщения чата |
 
 ---
 
 ### `project_chats` — `ProjectChat`
 
-Чат внутри проекта. Участники — через `ChatMember`. Прямого `owner_id` нет. Не связан с личными чатами (`chats`).
+Чат внутри проекта. Участники — через `ProjectChatMember`. Прямого `owner_id` нет. Не связан с личными чатами (`chats`).
 
 | Поле | Тип | Ограничения | Описание |
 |------|-----|-------------|----------|
@@ -395,12 +434,34 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 | Атрибут | Связь | Тип | Cascade | Описание |
 |---------|-------|-----|---------|----------|
 | `project` | → `Project` | N → 1 | — | Родительский проект |
-| `members` | → `ChatMember` | 1 → N | `all, delete-orphan` | Участники чата |
+| `members` | → `ProjectChatMember` | 1 → N | `all, delete-orphan` | Участники чата |
 | `messages` | → `ProjectChatMessage` | 1 → N | `all, delete-orphan` | Сообщения чата |
 
 ---
 
 ### `chat_members` — `ChatMember`
+
+Участники **личного** чата. Связывает `User` и `Chat`. К проектным чатам не применяется.
+
+| Поле | Тип | Ограничения | Описание |
+|------|-----|-------------|----------|
+| `chat_id` | `INTEGER` | PK, FK → `chats.chat_id` | Личный чат |
+| `user_id` | `INTEGER` | PK, FK → `users.user_id` | Пользователь |
+| `joined_at` | `TIMESTAMPTZ` | NOT NULL | Дата присоединения |
+| `is_owner` | `BOOLEAN` | NOT NULL, default `false` | Флаг владельца среди участников |
+
+Составной PK `(chat_id, user_id)` не позволяет добавить одного пользователя в чат дважды.
+
+**Relationships:**
+
+| Атрибут | Связь | Описание |
+|---------|-------|----------|
+| `chat` | → `Chat` | Личный чат |
+| `user` | → `User` | Участник |
+
+---
+
+### `project_chat_members` — `ProjectChatMember`
 
 Участники **проектного** чата. Связывает `User` и `ProjectChat`. К личным чатам не применяется. Пользователь должен быть участником проекта (`ProjectMember`).
 
@@ -421,6 +482,31 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 
 ---
 
+### `chat_invite_links` — `ChatInviteLink`
+
+Инвайт-ссылка для вступления в **личный** чат.
+
+| Поле | Тип | Ограничения | Описание |
+|------|-----|-------------|----------|
+| `invite_id` | `INTEGER` | PK, autoincrement | Уникальный идентификатор |
+| `token` | `VARCHAR(255)` | NOT NULL, UNIQUE | Токен в URL (`/join/<token>`) |
+| `chat_id` | `INTEGER` | FK → `chats.chat_id`, NOT NULL | Личный чат |
+| `created_by` | `INTEGER` | FK → `users.user_id`, NOT NULL | Создатель ссылки |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | Дата создания |
+| `expires_at` | `TIMESTAMPTZ` | nullable | Срок действия (`NULL` — без срока) |
+| `is_revoked` | `BOOLEAN` | default `false` | Ссылка отозвана |
+| `max_uses` | `INTEGER` | nullable | Лимит использований |
+| `uses_count` | `INTEGER` | default `0` | Сколько раз уже использовали |
+
+**Relationships:**
+
+| Атрибут | Связь | Тип | Описание |
+|---------|-------|-----|----------|
+| `chat` | → `Chat` | N → 1 | Личный чат |
+| `creator` | → `User` | N → 1 | Создатель ссылки |
+
+---
+
 ### `chat_messages` — `ChatMessage`
 
 Узел дерева диалога в **личном** чате. Не связан с `project_chat_messages`.
@@ -430,14 +516,14 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 | `message_id` | `INTEGER` | PK, autoincrement | Уникальный идентификатор |
 | `chat_id` | `INTEGER` | FK → `chats.chat_id`, NOT NULL | Личный чат |
 | `parent_id` | `INTEGER` | FK → `chat_messages.message_id`, nullable | Родитель (`NULL` — корень) |
-| `path` | `LTREE` | NOT NULL | Материализованный путь в дереве |
+| `path` | `LTREE` | nullable | Материализованный путь в дереве |
 | `context_anchor` | `TEXT` | nullable | Якорь в документе |
 | `context_text_snippet` | `TEXT` | nullable | Выделенный пользователем текст |
 | `author_id` | `INTEGER` | FK → `users.user_id`, nullable | Автор-пользователь |
 | `author_type` | `VARCHAR(20)` | NOT NULL | `user`, `assistant` и т.д. |
 | `ai_model` | `VARCHAR(100)` | nullable | Имя модели на момент генерации |
 | `ai_provider` | `VARCHAR(20)` | nullable | Провайдер на момент генерации |
-| `content` | `TEXT` | NOT NULL | Текст сообщения |
+| `content` | `TEXT` | nullable | Текст сообщения |
 | `content_json` | `JSONB` | nullable | Структурированный контент |
 | `message_metadata` | `JSONB` | NOT NULL, default `{}` | Токены, стоимость, latency |
 | `position` | `INTEGER` | NOT NULL, default `0` | Порядок среди siblings |
@@ -457,14 +543,14 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 
 ### `project_chat_messages` — `ProjectChatMessage`
 
-Узел дерева диалога в **проектном** чате. Структура полей совпадает с `ChatMessage`, но таблица и FK отдельные.
+Узел дерева диалога в **проектном** чате. Структура полей близка к `ChatMessage`, но таблица и FK отдельные.
 
 | Поле | Тип | Ограничения | Описание |
 |------|-----|-------------|----------|
 | `message_id` | `INTEGER` | PK, autoincrement | Уникальный идентификатор |
 | `chat_id` | `INTEGER` | FK → `project_chats.chat_id`, NOT NULL | Проектный чат |
 | `parent_id` | `INTEGER` | FK → `project_chat_messages.message_id`, nullable | Родитель (`NULL` — корень) |
-| `path` | `LTREE` | NOT NULL | Материализованный путь в дереве |
+| `path` | `LTREE` | nullable | Материализованный путь в дереве |
 | `context_anchor` | `TEXT` | nullable | Якорь в документе |
 | `context_text_snippet` | `TEXT` | nullable | Выделенный пользователем текст |
 | `author_id` | `INTEGER` | FK → `users.user_id`, nullable | Автор-пользователь |
@@ -561,16 +647,20 @@ flowchart LR
     users -->|owner_id| chats
     users -->|user_id| project_members
     users -->|user_id| chat_members
+    users -->|user_id| project_chat_members
+    users -->|created_by| chat_invite_links
     users -->|author_id| chat_messages
     users -->|author_id| project_chat_messages
 
     projects -->|project_id| project_members
     projects -->|project_id| project_chats
 
+    chats -->|chat_id| chat_members
+    chats -->|chat_id| chat_invite_links
     chats -->|chat_id| chat_messages
     chat_messages -->|parent_id| chat_messages
 
-    project_chats -->|chat_id| chat_members
+    project_chats -->|chat_id| project_chat_members
     project_chats -->|chat_id| project_chat_messages
     project_chat_messages -->|parent_id| project_chat_messages
 
@@ -585,8 +675,12 @@ flowchart LR
 | `project_chats.project_id` | `project_chats` | `projects` | каскад через ORM при удалении проекта |
 | `project_members.project_id` | `project_members` | `projects` | по умолчанию |
 | `project_members.user_id` | `project_members` | `users` | по умолчанию |
-| `chat_members.chat_id` | `chat_members` | `project_chats` | каскад через ORM при удалении чата |
+| `chat_members.chat_id` | `chat_members` | `chats` | каскад через ORM при удалении чата |
 | `chat_members.user_id` | `chat_members` | `users` | по умолчанию |
+| `project_chat_members.chat_id` | `project_chat_members` | `project_chats` | каскад через ORM при удалении чата |
+| `project_chat_members.user_id` | `project_chat_members` | `users` | по умолчанию |
+| `chat_invite_links.chat_id` | `chat_invite_links` | `chats` | каскад через ORM при удалении чата |
+| `chat_invite_links.created_by` | `chat_invite_links` | `users` | по умолчанию |
 | `chat_messages.chat_id` | `chat_messages` | `chats` | каскад через ORM при удалении чата |
 | `chat_messages.author_id` | `chat_messages` | `users` | по умолчанию |
 | `chat_messages.parent_id` | `chat_messages` | `chat_messages` | по умолчанию |
@@ -600,9 +694,9 @@ flowchart LR
 
 | Действие | Результат |
 |----------|-----------|
-| Удаление `Project` | Удаляются `ProjectMember`, `ProjectChat` (и через них `ChatMember`, `ProjectChatMessage`) |
-| Удаление `Chat` | Удаляются `ChatMessage` |
-| Удаление `ProjectChat` | Удаляются `ChatMember`, `ProjectChatMessage` |
+| Удаление `Project` | Удаляются `ProjectMember`, `ProjectChat` (и через них `ProjectChatMember`, `ProjectChatMessage`) |
+| Удаление `Chat` | Удаляются `ChatMember`, `ChatInviteLink`, `ChatMessage` |
+| Удаление `ProjectChat` | Удаляются `ProjectChatMember`, `ProjectChatMessage` |
 
 ---
 
@@ -628,13 +722,13 @@ flowchart LR
 Из корня проекта:
 
 ```bash
-python -m backend.src.core.create_tables
+python -m backend.src.utils.create_tables
 ```
 
 Скрипт:
 
 1. Включает расширение `ltree`
-2. Удаляет все таблицы (`drop_all`)
+2. Удаляет все таблицы (`DROP TABLE … CASCADE`)
 3. Создаёт таблицы заново (`create_all`)
 
 > **Внимание:** скрипт уничтожает все данные в БД. Для продакшена используйте Alembic-миграции.
@@ -653,16 +747,19 @@ DB_NAME=...
 
 ## Миграции Alembic
 
-| Ревизия | Описание |
-|---------|----------|
-| `81888daa0072` | Начальная схема (`users`, `projects`, `messages`, каталог AI) |
-| `812f7802a6bb` | Поле `users.about_me` |
-| `a3f1c8d92e10` | Таблицы `chats`, `chat_members`; `messages.project_id` → `messages.chat_id` |
-| `b7e4a1f03c22` | Разделение `chats` / `project_chats`; личные чаты без `project_id` |
-| `c9d2e8f14a55` | Разделение `messages` → `chat_messages` + `project_chat_messages` |
-| `d4f6b2a18e77` | `chat_members` ссылается на `project_chats`, не на личные `chats` |
-| `e8a3c5d21f90` | Удалены `chat_members` и `project_chats.owner_id` |
-| `f1b7d4e92c33` | Восстановлена `chat_members` для участников проектных чатов |
+Цепочка ревизий (от корня к head):
+
+| Ревизия | Down revision |
+|---------|---------------|
+| `5e781a049e4d` | — |
+| `e786e6c04d77` | `5e781a049e4d` |
+| `1172aca44a58` | `e786e6c04d77` |
+| `a3fadc78b033` | `1172aca44a58` |
+| `1765b18539be` | `a3fadc78b033` |
+| `4b1ebc3b4eae` | `1765b18539be` |
+| `1d518aaa15a7` | `4b1ebc3b4eae` |
+| `f710a8089d90` | `1d518aaa15a7` |
+| `27e1854bec14` | `f710a8089d90` |
 
 Применить все миграции:
 
@@ -681,7 +778,7 @@ users, ai_providers, ai_models
     ↓
 projects, ai_provider_models, chats
     ↓
-project_members, project_chats
+project_members, project_chats, chat_members, chat_invite_links
     ↓
-chat_members, chat_messages, project_chat_messages
+project_chat_members, chat_messages, project_chat_messages
 ```

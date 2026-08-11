@@ -1,6 +1,6 @@
 import uuid
 
-from backend.src.core.redis_keys import RedisKeys
+from backend.src.utils.redis_keys import RedisKeys
 from backend.src.models.orm_models import Chat, ChatMember, ChatInviteLink
 from backend.src.schemas.chat_schema import ChatDTO
 from backend.src.schemas.custom import ChatMemberDTO, ChatTokenDTO

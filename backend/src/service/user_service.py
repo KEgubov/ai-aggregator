@@ -1,7 +1,8 @@
-from backend.src.core.redis_keys import RedisKeys
+from backend.src.utils.redis_keys import RedisKeys
 from backend.src.models.orm_models import User
 from backend.src.schemas.custom import CurrentUserDTO, UserProfileDTO
 from backend.src.schemas.user_schema import UserAddDTO, UserDTO
+from backend.src.utils.security import hash_password
 
 
 class UserService:
@@ -16,7 +17,7 @@ class UserService:
         username = user.email.split("@", 1)[0]
         model_user = User(
             email=user.email,
-            password=user.password,
+            password=hash_password(user.password),
             username=username,
             about_me=user.about_me,
         )

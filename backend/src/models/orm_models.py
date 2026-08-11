@@ -74,7 +74,7 @@ class User(Base):
 
     user_id: Mapped[intpk]
     email: Mapped[str_255] = mapped_column(unique=True, nullable=False)
-    password: Mapped[str_100] = mapped_column(nullable=False)
+    password: Mapped[str_255] = mapped_column(nullable=False)
     username: Mapped[str_100]
     about_me: Mapped[str_20] = mapped_column(nullable=False)
     avatar_url: Mapped[Optional[str]]

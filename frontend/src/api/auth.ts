@@ -64,7 +64,7 @@ export async function changeUsername(username: string): Promise<string> {
   const params = new URLSearchParams({ username });
   const data = await apiFetch<ChangeUsernameResponse>(
     `/user/profile/username/change?${params.toString()}`,
-    { method: 'POST' },
+    { method: 'PUT' },
   );
   return data.change_name;
 }
