@@ -1,55 +1,110 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Loader2, LogIn, UserPlus } from 'lucide-react';
 import { loginUser, registerUser } from '../api/auth';
 import { ApiError } from '../api/client';
-
-const COLORS = {
-  box: '#2D2D2D',
-  border: '#424242',
-  accent: '#F5A623',
-  accentHover: '#ffb64a',
-  text: '#EDEDED',
-  muted: '#949494',
-  error: '#f87171',
-};
-
-type AuthMode = 'login' | 'register';
 
 interface AuthFormProps {
   onSuccess: () => void;
 }
 
 export default function AuthForm({ onSuccess }: AuthFormProps) {
-  const [mode, setMode] = useState<AuthMode>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [rightPanelActive, setRightPanelActive] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
   const [aboutMe, setAboutMe] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formsStageRef = useRef<HTMLDivElement>(null);
+  const signInPanelRef = useRef<HTMLDivElement>(null);
+  const signUpPanelRef = useRef<HTMLDivElement>(null);
 
-  async function handleSubmit(e: FormEvent) {
+  const isRegister = rightPanelActive;
+
+  useEffect(() => {
+    const stage = formsStageRef.current;
+    const signInPanel = signInPanelRef.current;
+    const signUpPanel = signUpPanelRef.current;
+    if (!stage || !signInPanel || !signUpPanel) return;
+
+    const syncHeight = () => {
+      if (getComputedStyle(stage).display === 'contents') {
+        stage.style.height = '';
+        return;
+      }
+      const activePanel = isRegister ? signUpPanel : signInPanel;
+      stage.style.height = `${activePanel.offsetHeight}px`;
+    };
+
+    syncHeight();
+
+    const ro = new ResizeObserver(syncHeight);
+    ro.observe(signInPanel);
+    ro.observe(signUpPanel);
+    window.addEventListener('resize', syncHeight);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', syncHeight);
+    };
+  }, [isRegister, error, info, isSubmitting]);
+
+  function switchToRegister() {
+    setRightPanelActive(true);
+    setError(null);
+    setInfo(null);
+  }
+
+  function switchToLogin() {
+    setRightPanelActive(false);
+    setError(null);
+    setInfo(null);
+  }
+
+  async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setInfo(null);
     setIsSubmitting(true);
 
     try {
-      if (mode === 'register') {
-        await registerUser({ email, password, about_me: aboutMe });
-        setInfo('Аккаунт создан. Войдите с теми же данными.');
-        setMode('login');
-        setPassword('');
-        setAboutMe('');
-      } else {
-        await loginUser({ email, password });
-        onSuccess();
-      }
+      await loginUser({ email: loginEmail, password: loginPassword });
+      onSuccess();
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError(err instanceof Error ? err.message : 'Не удалось выполнить запрос');
+        setError(err instanceof Error ? err.message : 'Не удалось выполнить вход');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleRegister(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setInfo(null);
+    setIsSubmitting(true);
+
+    try {
+      await registerUser({
+        email: registerEmail,
+        password: registerPassword,
+        about_me: aboutMe,
+      });
+      setInfo('Аккаунт создан. Войдите с теми же данными.');
+      setLoginEmail(registerEmail);
+      setLoginPassword('');
+      setRegisterPassword('');
+      setAboutMe('');
+      setRightPanelActive(false);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : 'Не удалось зарегистрироваться');
       }
     } finally {
       setIsSubmitting(false);
@@ -57,151 +112,197 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   }
 
   return (
-    <div className="w-full min-h-dvh bg-black text-white flex items-center justify-center p-4 sm:p-6">
-      <div
-        className="w-full max-w-md rounded-3xl p-5 sm:p-8"
-        style={{ background: COLORS.box, border: `1px solid ${COLORS.border}` }}
-      >
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold mb-2" style={{ color: COLORS.text }}>
-            AI Aggregator
-          </h1>
-          <p className="text-sm" style={{ color: COLORS.muted }}>
-            {mode === 'login' ? 'Войдите, чтобы продолжить' : 'Создайте аккаунт'}
+    <div className="auth-page">
+      <div className={`auth-container${isRegister ? ' right-panel-active' : ''}`}>
+        <div className="auth-mobile-header">
+          <h1 className="auth-mobile-brand">AI Aggregator</h1>
+          <p key={isRegister ? 'register' : 'login'} className="auth-mobile-lead">
+            {isRegister ? 'Создайте аккаунт' : 'Войдите, чтобы продолжить'}
           </p>
+          <div className="auth-mobile-tabs" role="tablist" aria-label="Режим входа">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isRegister}
+              className={`auth-mobile-tab${!isRegister ? ' is-active' : ''}`}
+              onClick={switchToLogin}
+            >
+              Вход
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isRegister}
+              className={`auth-mobile-tab${isRegister ? ' is-active' : ''}`}
+              onClick={switchToRegister}
+            >
+              Регистрация
+            </button>
+          </div>
         </div>
 
-        <div
-          className="flex rounded-2xl p-1 mb-6"
-          style={{ background: '#1f1f1f', border: `1px solid ${COLORS.border}` }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setMode('login');
-              setError(null);
-              setInfo(null);
-            }}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
-            style={{
-              background: mode === 'login' ? COLORS.accent : 'transparent',
-              color: mode === 'login' ? '#1a1a1a' : COLORS.muted,
-            }}
-          >
-            Вход
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode('register');
-              setError(null);
-              setInfo(null);
-            }}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
-            style={{
-              background: mode === 'register' ? COLORS.accent : 'transparent',
-              color: mode === 'register' ? '#1a1a1a' : COLORS.muted,
-            }}
-          >
-            Регистрация
-          </button>
+        <div className="auth-forms-stage" ref={formsStageRef}>
+          <div className="auth-forms-track">
+            <div
+              ref={signInPanelRef}
+              className="auth-form-panel auth-sign-in"
+              aria-hidden={isRegister}
+            >
+              <form className="auth-form" onSubmit={handleLogin}>
+                <h2 className="auth-title">Войти</h2>
+                <p className="auth-subtitle">Войдите, чтобы продолжить</p>
+
+                <label className="auth-field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    name="login-email"
+                    required={!isRegister}
+                    disabled={isRegister || isSubmitting}
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                  />
+                </label>
+
+                <label className="auth-field">
+                  <span>Пароль</span>
+                  <input
+                    type="password"
+                    name="login-password"
+                    required={!isRegister}
+                    disabled={isRegister || isSubmitting}
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Ваш пароль"
+                    autoComplete="current-password"
+                  />
+                </label>
+
+                {!isRegister && error && (
+                  <p className="auth-message" role="alert" style={{ color: '#f87171' }}>
+                    {error}
+                  </p>
+                )}
+                {!isRegister && info && (
+                  <p className="auth-message" role="status" style={{ color: '#f5a623' }}>
+                    {info}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  className="auth-btn auth-btn-primary"
+                  disabled={isRegister || isSubmitting}
+                >
+                  {isSubmitting && !isRegister ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <LogIn className="w-4 h-4" />
+                  )}
+                  Войти
+                </button>
+              </form>
+            </div>
+
+            <div
+              ref={signUpPanelRef}
+              className="auth-form-panel auth-sign-up"
+              aria-hidden={!isRegister}
+            >
+              <form className="auth-form" onSubmit={handleRegister}>
+                <h2 className="auth-title">Создать аккаунт</h2>
+                <p className="auth-subtitle">Заполните данные для регистрации</p>
+
+                <label className="auth-field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    name="register-email"
+                    required={isRegister}
+                    disabled={!isRegister || isSubmitting}
+                    value={registerEmail}
+                    onChange={(e) => setRegisterEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                  />
+                </label>
+
+                <label className="auth-field">
+                  <span>Пароль</span>
+                  <input
+                    type="password"
+                    name="register-password"
+                    required={isRegister}
+                    disabled={!isRegister || isSubmitting}
+                    minLength={8}
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    placeholder="Минимум 8 символов"
+                    autoComplete="new-password"
+                  />
+                </label>
+
+                <label className="auth-field">
+                  <span>О себе</span>
+                  <input
+                    type="text"
+                    name="register-about"
+                    required={isRegister}
+                    disabled={!isRegister || isSubmitting}
+                    maxLength={20}
+                    value={aboutMe}
+                    onChange={(e) => setAboutMe(e.target.value)}
+                    placeholder="Краткое описание"
+                    autoComplete="nickname"
+                  />
+                </label>
+
+                {isRegister && error && (
+                  <p className="auth-message" role="alert" style={{ color: '#f87171' }}>
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  className="auth-btn auth-btn-primary"
+                  disabled={!isRegister || isSubmitting}
+                >
+                  {isSubmitting && isRegister ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
+                  Зарегистрироваться
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="block">
-            <span className="text-xs mb-1.5 block" style={{ color: COLORS.muted }}>
-              Email
-            </span>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-              style={{
-                background: '#1f1f1f',
-                border: `1px solid ${COLORS.border}`,
-                color: COLORS.text,
-              }}
-              placeholder="you@example.com"
-            />
-          </label>
+        <div className="auth-overlay-container">
+          <div className="auth-overlay">
+            <div className="auth-overlay-panel auth-overlay-left">
+              <h2 className="auth-overlay-title">С возвращением!</h2>
+              <p className="auth-overlay-text">Чтобы продолжить, войдите в свой аккаунт</p>
+              <button type="button" className="auth-btn auth-btn-ghost" onClick={switchToLogin}>
+                Войти
+              </button>
+            </div>
 
-          <label className="block">
-            <span className="text-xs mb-1.5 block" style={{ color: COLORS.muted }}>
-              Пароль
-            </span>
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-              style={{
-                background: '#1f1f1f',
-                border: `1px solid ${COLORS.border}`,
-                color: COLORS.text,
-              }}
-              placeholder="Минимум 8 символов"
-            />
-          </label>
-
-          {mode === 'register' && (
-            <label className="block">
-              <span className="text-xs mb-1.5 block" style={{ color: COLORS.muted }}>
-                О себе
-              </span>
-              <input
-                type="text"
-                required
-                maxLength={20}
-                value={aboutMe}
-                onChange={(e) => setAboutMe(e.target.value)}
-                className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-                style={{
-                  background: '#1f1f1f',
-                  border: `1px solid ${COLORS.border}`,
-                  color: COLORS.text,
-                }}
-                placeholder="Краткое описание"
-              />
-            </label>
-          )}
-
-          {error && (
-            <p className="text-sm text-center" style={{ color: COLORS.error }}>
-              {error}
-            </p>
-          )}
-          {info && (
-            <p className="text-sm text-center" style={{ color: COLORS.accent }}>
-              {info}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-2xl py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
-            style={{ background: COLORS.accent, color: '#1a1a1a' }}
-            onMouseEnter={(e) => {
-              if (!isSubmitting) e.currentTarget.style.background = COLORS.accentHover;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = COLORS.accent;
-            }}
-          >
-            {isSubmitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : mode === 'login' ? (
-              <LogIn className="w-4 h-4" />
-            ) : (
-              <UserPlus className="w-4 h-4" />
-            )}
-            {mode === 'login' ? 'Войти' : 'Зарегистрироваться'}
-          </button>
-        </form>
+            <div className="auth-overlay-panel auth-overlay-right">
+              <h2 className="auth-overlay-title">Привет!</h2>
+              <p className="auth-overlay-text">
+                Введите данные и начните работу с AI Aggregator
+              </p>
+              <button type="button" className="auth-btn auth-btn-ghost" onClick={switchToRegister}>
+                Регистрация
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

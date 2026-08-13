@@ -9,7 +9,7 @@ import { createChat, fetchChats, joinChat } from './api/chat';
 import { ApiError } from './api/client';
 import type { Chat } from './types/chat';
 import { initialsFromName } from './types/user';
-import { startViewTransition } from './utils/viewTransition';
+import { startViewTransition, supportsViewTransition } from './utils/viewTransition';
 
 type AppView = 'loading' | 'auth' | 'chats' | 'conversation';
 
@@ -18,6 +18,7 @@ const PENDING_JOIN_TOKEN = 'agregation_pending_join';
 const DEFAULT_INITIALS = 'Я';
 const DEFAULT_LABEL = 'Пользователь';
 const DESKTOP_MQ = '(min-width: 768px)';
+const AUTH_ENTER_CLASS = 'vt-auth-enter';
 
 function isDesktopViewport(): boolean {
   return typeof window !== 'undefined' && window.matchMedia(DESKTOP_MQ).matches;
@@ -52,6 +53,7 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [shellEnter, setShellEnter] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -155,6 +157,14 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  const revealApp = useCallback((update: () => void) => {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!supportsViewTransition() && !reduceMotion) {
+      setShellEnter(true);
+    }
+    startViewTransition(update, { className: AUTH_ENTER_CLASS });
+  }, []);
+
   const handleAuthSuccess = useCallback(async () => {
     sessionStorage.removeItem(LOGOUT_FLAG);
     await Promise.all([loadChats(), loadProfile()]);
@@ -162,12 +172,31 @@ export default function App() {
 
     const pending = sessionStorage.getItem(PENDING_JOIN_TOKEN) ?? readJoinTokenFromPath();
     if (pending) {
-      const ok = await acceptInvite(pending);
-      if (!ok) setView('chats');
+      setJoinError(null);
+      try {
+        const chat = await joinChat(pending);
+        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
+        clearJoinPath();
+        setChats((prev) => {
+          if (prev.some((c) => c.chat_id === chat.chat_id)) return prev;
+          return [chat, ...prev];
+        });
+        revealApp(() => {
+          setActiveChat(chat);
+          setView('conversation');
+          closeSidebarOnMobile();
+        });
+      } catch (err) {
+        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
+        clearJoinPath();
+        setJoinError(err instanceof Error ? err.message : 'Не удалось присоединиться к чату');
+        revealApp(() => setView('chats'));
+      }
       return;
     }
-    setView('chats');
-  }, [acceptInvite, loadChats, loadProfile]);
+
+    revealApp(() => setView('chats'));
+  }, [closeSidebarOnMobile, loadChats, loadProfile, revealApp]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -270,7 +299,19 @@ export default function App() {
   }
 
   return (
-    <div className="w-full h-dvh bg-black text-white flex overflow-hidden relative">
+    <div
+      className={[
+        'app-shell w-full h-dvh bg-black text-white flex overflow-hidden relative',
+        shellEnter ? 'app-shell-enter' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && event.animationName === 'app-shell-in') {
+          setShellEnter(false);
+        }
+      }}
+    >
       <button
         type="button"
         aria-label="Закрыть меню"
