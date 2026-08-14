@@ -361,6 +361,7 @@ export default function App() {
         <div className="chat-main-surface">
           {view === 'conversation' && activeChat ? (
             <ChatView
+              key={activeChat.chat_id}
               chat={activeChat}
               currentUserId={currentUserId}
               userInitials={userInitials}

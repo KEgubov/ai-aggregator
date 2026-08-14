@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Brain, Gem, Link2, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
@@ -7,7 +7,15 @@ import ChatInfoModal from './ChatInfoModal';
 import SidebarToggle from './SidebarToggle';
 import { createChatInvite } from '../api/chat';
 import { fetchModels, findModelByName, resolveModelDisplayName, type ApiModel } from '../api/models';
-import { fetchMessages, sendChatMessage, streamMessage } from '../api/message';
+import { fetchMessages } from '../api/message';
+import {
+  clearChatStream,
+  getChatStream,
+  isChatStreaming,
+  messagesWithStream,
+  startChatGeneration,
+  subscribeChatStream,
+} from '../lib/chatStreamStore';
 import {
   getLastServerMessageId,
   mapMessageFromApi,
@@ -91,11 +99,26 @@ export default function ChatView({
   const inviteHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modelsLoadedRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
-  const sendingRef = useRef(false);
   const loadSeqRef = useRef(0);
-  const streamSeqRef = useRef(0);
+  const chatIdRef = useRef(chat.chat_id);
 
+  chatIdRef.current = chat.chat_id;
   messagesRef.current = messages;
+
+  const subscribeStream = useCallback(
+    (onStoreChange: () => void) => subscribeChatStream(chat.chat_id, onStoreChange),
+    [chat.chat_id],
+  );
+  const stream = useSyncExternalStore(
+    subscribeStream,
+    () => getChatStream(chat.chat_id),
+    () => null,
+  );
+  const displayMessages = useMemo(
+    () => messagesWithStream(messages, stream),
+    [messages, stream],
+  );
+  const isSending = stream?.status === 'running' || stream?.status === 'completed';
 
   useEffect(() => {
     setInfoOpen(false);
@@ -148,7 +171,7 @@ export default function ChatView({
                 return list;
               }).catch(() => apiModels),
         ]);
-        if (seq !== loadSeqRef.current || sendingRef.current) return;
+        if (seq !== loadSeqRef.current) return;
         setMessages(mapMessagesWithDisplayNames(apiMessages, models, currentUserId));
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
@@ -163,7 +186,7 @@ export default function ChatView({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [displayMessages]);
 
   useEffect(() => {
     return () => {
@@ -193,140 +216,90 @@ export default function ChatView({
   }, [chat.chat_id, inviteBusy, showInviteHint]);
 
   const reloadFromServer = useCallback(async () => {
+    const chatId = chatIdRef.current;
     let models = apiModels;
     if (!modelsLoadedRef.current || models.length === 0) {
       try {
         models = await fetchModels();
+        if (chatIdRef.current !== chatId) return;
         setApiModels(models);
         modelsLoadedRef.current = true;
       } catch {
         models = apiModels;
       }
     }
-    const apiMessages = await fetchMessages(chat.chat_id);
+    const apiMessages = await fetchMessages(chatId);
+    if (chatIdRef.current !== chatId) return;
     setMessages(mapMessagesWithDisplayNames(apiMessages, models, currentUserId));
-  }, [apiModels, chat.chat_id, currentUserId]);
+  }, [apiModels, currentUserId]);
+
+  const reloadRef = useRef(reloadFromServer);
+  reloadRef.current = reloadFromServer;
+
+  useEffect(() => {
+    if (stream?.status === 'error' && stream.error) {
+      setMessagesError(stream.error);
+      void reloadRef.current();
+      return;
+    }
+    if (stream?.status !== 'completed') return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await reloadRef.current();
+      } finally {
+        if (!cancelled && getChatStream(chat.chat_id)?.status === 'completed') {
+          clearChatStream(chat.chat_id);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stream?.status, stream?.error, chat.chat_id]);
 
   const handleSend = useCallback(
-    async (payload: { text: string; modelTokens: string[]; memberTokens: string[] }) => {
-      if (sendingRef.current) return;
+    async (payload: { text: string; modelTokens: string[]; memberTokens: string[] }): Promise<boolean> => {
+      const chatId = chat.chat_id;
+      if (isChatStreaming(chatId)) return false;
 
       const text = stripMentionTokens(
         payload.text,
         payload.modelTokens,
         payload.memberTokens,
       );
-      if (!text) return;
+      if (!text) return false;
 
       const parentId = getLastServerMessageId(messagesRef.current);
-      const streamSeq = ++streamSeqRef.current;
-
-      sendingRef.current = true;
       setMessagesError(null);
       setModelsError(null);
 
-      try {
-        let currentModels = apiModels;
-        if (currentModels.length === 0) {
-          currentModels = await loadModels();
-        }
-
-        if (payload.modelTokens.length === 0) {
-          const userId = `local-user-${streamSeq}`;
-          setMessages((prev) => [
-            ...prev,
-            { id: userId, type: 'user', text, isMe: true },
-          ]);
-          try {
-            await sendChatMessage({ chatId: chat.chat_id, content: text, parentId });
-            if (streamSeq !== streamSeqRef.current) return;
-            await reloadFromServer();
-          } catch (err) {
-            if (streamSeq !== streamSeqRef.current) return;
-            setMessages((prev) => prev.filter((m) => m.id !== userId));
-            throw err;
-          }
-          return;
-        }
-
-        const targets = resolveTargetModels(currentModels, payload.modelTokens);
-        if (targets.length === 0) {
-          setModelsError('Выбранная модель не найдена. Проверьте список моделей.');
-          return;
-        }
-
-        // Одна модель за запрос: иначе /message/send заново сохраняет user на каждый стрим.
-        const model = targets[0];
-        const userId = `local-user-${streamSeq}`;
-        const assistantId = `local-ai-${streamSeq}`;
-
-        setMessages((prev) => [
-          ...prev,
-          { id: userId, type: 'user', text, isMe: true },
-          {
-            id: assistantId,
-            type: 'ai',
-            text: '',
-            modelName: model.display_name,
-            isStreaming: true,
-          },
-        ]);
-
-        let assistantText = '';
-        let acceptChunks = true;
-
-        try {
-          await streamMessage(
-            {
-              chatId: chat.chat_id,
-              modelId: model.model_id,
-              content: text,
-              parentId,
-            },
-            (chunk) => {
-              if (!acceptChunks || streamSeq !== streamSeqRef.current) return;
-              assistantText += chunk;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, text: assistantText, isStreaming: true }
-                    : m,
-                ),
-              );
-            },
-          );
-        } catch (err) {
-          acceptChunks = false;
-          const errorText = err instanceof Error ? err.message : 'Ошибка генерации';
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    text: `⚠ ${errorText}`,
-                    isStreaming: false,
-                  }
-                : m,
-            ),
-          );
-          setMessagesError(errorText);
-          return;
-        }
-
-        acceptChunks = false;
-        if (streamSeq !== streamSeqRef.current) return;
-
-        // Полностью заменить локальные temp-сообщения серверным снимком — без concat.
-        await reloadFromServer();
-      } catch (err) {
-        setMessagesError(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
-      } finally {
-        if (streamSeq === streamSeqRef.current) {
-          sendingRef.current = false;
-        }
+      let currentModels = apiModels;
+      if (payload.modelTokens.length > 0 && currentModels.length === 0) {
+        currentModels = await loadModels();
       }
+
+      if (payload.modelTokens.length === 0) {
+        return startChatGeneration({ chatId, content: text, parentId });
+      }
+
+      const targets = resolveTargetModels(currentModels, payload.modelTokens);
+      if (targets.length === 0) {
+        setModelsError('Выбранная модель не найдена. Проверьте список моделей.');
+        return false;
+      }
+
+      const model = targets[0];
+      return startChatGeneration({
+        chatId,
+        content: text,
+        parentId,
+        modelId: model.model_id,
+        modelName: model.display_name,
+      });
     },
-    [apiModels, chat.chat_id, loadModels, reloadFromServer],
+    [apiModels, chat.chat_id, loadModels],
   );
 
   return (
@@ -399,7 +372,7 @@ export default function ChatView({
             {messagesError ?? 'Загрузка сообщений…'}
           </p>
         )}
-        <ChatThreading messages={messages} userInitials={userInitials} />
+        <ChatThreading messages={displayMessages} userInitials={userInitials} />
         <div ref={bottomRef} aria-hidden="true" className="h-px" />
       </div>
 
@@ -414,6 +387,7 @@ export default function ChatView({
         )}
         <ChatInput
           aiModels={inputModels}
+          isSending={isSending}
           onMentionOpen={handleMentionOpen}
           onSend={handleSend}
           placeholder="Напишите сообщение или введите @ для выбора модели…"

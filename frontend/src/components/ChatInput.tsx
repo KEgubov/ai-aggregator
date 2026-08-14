@@ -739,22 +739,31 @@ function SuggestionMenu({ models, members, flat, highlightedIndex, onHover, onSe
 // Основной компонент ChatInput
 // ────────────────────────────────────────────────────────────────────────────
 
+export type ChatInputSendPayload = {
+  text: string;
+  modelTokens: string[];
+  memberTokens: string[];
+};
+
 export interface ChatInputProps {
   placeholder?: string;
   aiModels?: InputAiModel[];
   teamMembers?: InputTeamMember[];
+  isSending?: boolean;
   onMentionOpen?: () => void;
-  onSend?: (payload: { text: string; modelTokens: string[]; memberTokens: string[] }) => void;
+  onSend?: (payload: ChatInputSendPayload) => boolean | void | Promise<boolean | void>;
 }
 
 function ChatInput({
   placeholder = 'Message team, or type @ to summon AI...',
   aiModels = [],
   teamMembers = [],
+  isSending = false,
   onMentionOpen,
   onSend,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLDivElement>(null);
+  const sendLockRef = useRef(false);
   const measureRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const boxHeightRef = useRef<number | null>(null);
@@ -1172,27 +1181,36 @@ function ChatInput({
     measureMultiline();
   }, [closeMenu, insertOrReplaceToken, showMenu, syncFromDom, measureMultiline, detectAndOpenMention, aiModels, teamMembers]);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const root = inputRef.current;
-    if (!root) return;
+    if (!root || sendLockRef.current || isSending) return;
     cleanupDom(root);
     while (root.querySelector('.cip-mention-live')) {
       unwrapMentionLiveNode(root);
     }
     const text = extractEditableText(root);
-    onSend?.({ text, modelTokens: modelTokenNames, memberTokens: memberTokenNames });
-    // Текст очищаем, привязанную модель оставляем.
-    root.innerHTML = '';
-    setIsEmpty(true);
-    setIsMultiline(false);
-    setMemberTokenNames([]);
-    setMentionActive(false);
-    closeMenu();
-    root.blur();
-    requestAnimationFrame(() => {
-      animateBoxHeight();
-    });
-  }, [onSend, modelTokenNames, memberTokenNames, closeMenu, animateBoxHeight]);
+    sendLockRef.current = true;
+    try {
+      const accepted = await Promise.resolve(
+        onSend?.({ text, modelTokens: modelTokenNames, memberTokens: memberTokenNames }),
+      );
+      if (accepted === false) return;
+      // Текст очищаем только если отправка принята; привязанную модель оставляем.
+      if (!inputRef.current) return;
+      inputRef.current.innerHTML = '';
+      setIsEmpty(true);
+      setIsMultiline(false);
+      setMemberTokenNames([]);
+      setMentionActive(false);
+      closeMenu();
+      inputRef.current.blur();
+      requestAnimationFrame(() => {
+        animateBoxHeight();
+      });
+    } finally {
+      sendLockRef.current = false;
+    }
+  }, [onSend, modelTokenNames, memberTokenNames, closeMenu, animateBoxHeight, isSending]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1224,10 +1242,10 @@ function ChatInput({
 
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (!isEmpty) handleSend();
+        if (!isEmpty && !isSending) void handleSend();
       }
     },
-    [showMenu, flat, highlightedIndex, insertOrReplaceToken, closeMenu, handleBackspace, isEmpty, handleSend]
+    [showMenu, flat, highlightedIndex, insertOrReplaceToken, closeMenu, handleBackspace, isEmpty, isSending, handleSend]
   );
 
   const handleFocus = useCallback(() => {
@@ -1277,8 +1295,8 @@ function ChatInput({
       <span className="cip-send-label">{sendConfig.label}</span>
       <button
         type="button"
-        onClick={handleSend}
-        disabled={isEmpty}
+        onClick={() => void handleSend()}
+        disabled={isEmpty || isSending}
         aria-label={sendConfig.label}
         className="cip-icon-btn cip-send-btn"
       >
