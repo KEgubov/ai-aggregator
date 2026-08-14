@@ -13,7 +13,7 @@
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat&logo=vite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?style=flat&logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-yellow?style=flat)
+![License](https://img.shields.io/badge/License-Proprietary-red?style=flat)
 
 Агрегатор AI-моделей: REST API на FastAPI и фронтенд на React. Аутентификация через AuthX (JWT в cookie), данные в PostgreSQL, кэш в Redis. Генерация ответов через Gemini и Groq со стримингом.
 
@@ -77,3 +77,9 @@ REDIS_URL=redis://localhost:6379/0
 GEMINI_API=your_gemini_api_key
 GROQ_API=your_groq_api_key
 ```
+
+## 📄 Лицензия
+
+Проприетарная лицензия — см. [LICENSE](LICENSE).
+
+Код и материалы проекта принадлежат автору. Разрешено только ознакомление (просмотр / локальный clone для изучения). Использование в личных или коммерческих целях, копирование и распространение **запрещены** без письменного разрешения.
