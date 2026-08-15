@@ -55,7 +55,6 @@ const COLORS = {
   otherBubble: '#252525',
   gutterLine: '#3E3E3E',
   divider: '#232323',
-  dot: '#4d4d4d',
   iconDefault: '#737373',
   iconHover: '#fbbf24',
   accent: '#fbbf24',
@@ -67,7 +66,53 @@ const COLORS = {
   codeHeader: '#242424',
   tableBorder: '#333333',
   tableHeader: '#1f1f1f',
+  aiCard: '#141414',
+  aiCardBorder: '#2a2a2a',
 };
+
+const BUBBLE_RADIUS_LG = 16;
+const BUBBLE_RADIUS_SM = 6;
+
+const NAME_COLORS = [
+  '#F5A623',
+  '#FFBC50',
+  '#82AAFF',
+  '#C3E88D',
+  '#C792EA',
+  '#F78C6C',
+  '#89DDFF',
+  '#F87171',
+];
+
+function colorFromName(name) {
+  const value = String(name || '');
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return NAME_COLORS[hash % NAME_COLORS.length];
+}
+
+function userAuthorKey(msg) {
+  if (!msg || msg.type !== 'user') return null;
+  if (msg.isMe) return '__me__';
+  return msg.authorName || msg.authorInitials || msg.id;
+}
+
+function isSameUser(a, b) {
+  const keyA = userAuthorKey(a);
+  const keyB = userAuthorKey(b);
+  return Boolean(keyA && keyB && keyA === keyB);
+}
+
+function bubbleBorderRadius({ isMe, isFirst, isLast }) {
+  const topStack = isFirst ? BUBBLE_RADIUS_LG : BUBBLE_RADIUS_SM;
+  const bottomStack = isLast ? 0 : BUBBLE_RADIUS_SM;
+  if (isMe) {
+    return `${BUBBLE_RADIUS_LG}px ${topStack}px ${bottomStack}px ${BUBBLE_RADIUS_LG}px`;
+  }
+  return `${topStack}px ${BUBBLE_RADIUS_LG}px ${BUBBLE_RADIUS_LG}px ${bottomStack}px`;
+}
 
 const MD_STYLES = `
 .md-body {
@@ -336,13 +381,13 @@ function MarkdownText({ text }) {
   );
 }
 
-function Avatar({ label, isAI, size = 'sm' }) {
+function Avatar({ label, isAI, size = 'sm', accentColor }) {
   const dim = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-9 h-9 text-sm';
   const style = isAI
     ? { background: COLORS.accent, color: '#1a1200' }
     : {
         background: '#1f1f1f',
-        color: COLORS.accent,
+        color: accentColor || COLORS.accent,
         border: '1px solid #424242',
       };
 
@@ -375,15 +420,6 @@ function AvatarStack({ labels }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function Dot() {
-  return (
-    <span
-      className="inline-block shrink-0"
-      style={{ width: 4, height: 4, borderRadius: '9999px', background: COLORS.dot }}
-    />
   );
 }
 
@@ -452,6 +488,28 @@ const GENERATING_DOT_STYLES = `
   animation: msg-ai-body-in 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
+.msg-bubble-wrap {
+  position: relative;
+}
+.msg-bubble {
+  overflow: hidden;
+}
+.msg-bubble-tail {
+  position: absolute;
+  z-index: 1;
+  bottom: 0;
+  width: 9px;
+  height: 17px;
+  pointer-events: none;
+  overflow: visible;
+}
+.msg-bubble-tail-left {
+  left: -9px;
+}
+.msg-bubble-tail-right {
+  right: -9px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-generating-dot,
   .msg-enter-user,
@@ -471,10 +529,38 @@ function isLocalMessageId(id) {
 
 function GeneratingDot() {
   return (
-    <div className="pl-9 py-3" aria-label="Генерирует ответ" role="status">
+    <div className="px-3.5 sm:px-4 py-3" aria-label="Генерирует ответ" role="status">
       <span className="chat-generating-dot" />
     </div>
   );
+}
+
+function snippetFromText(text, maxLen = 56) {
+  const compact = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!compact) return '';
+  if (compact.length <= maxLen) return compact;
+  return `${compact.slice(0, maxLen).trimEnd()}…`;
+}
+
+function resolveReplyParent(messages, msg) {
+  if (msg.parentId != null) {
+    const byId = messages.find((item) => item.id === String(msg.parentId));
+    if (byId) return byId;
+  }
+  const idx = messages.findIndex((item) => item.id === msg.id);
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    if (messages[i].type === 'user') return messages[i];
+  }
+  return null;
+}
+
+function replyAuthorLabel(parent) {
+  if (!parent) return null;
+  if (parent.type === 'ai') return parent.modelName || 'ИИ';
+  if (parent.isMe) return 'вы';
+  return parent.authorName || parent.authorInitials || 'участник';
 }
 
 function CopyMessageButton({ text }) {
@@ -508,6 +594,7 @@ function CopyMessageButton({ text }) {
   );
 }
 
+/** Гаттер «обсудить абзац» — вернуть в AIResponse, когда будут треды. */
 function Paragraph({ id, text, activeThread, onOpen, userInitials }) {
   const [hoverP, setHoverP] = useState(false);
   const [hoverIcon, setHoverIcon] = useState(false);
@@ -570,7 +657,7 @@ function Paragraph({ id, text, activeThread, onOpen, userInitials }) {
   );
 }
 
-function MessageMoreMenu({ createdAt, branchActive, onBranch }) {
+function MessageMoreMenu({ createdAt, branchActive, onBranch, alignRight = false }) {
   const [open, setOpen] = useState(false);
   const [hoverBtn, setHoverBtn] = useState(false);
   const rootRef = useRef(null);
@@ -617,7 +704,7 @@ function MessageMoreMenu({ createdAt, branchActive, onBranch }) {
       {open && (
         <div
           role="menu"
-          className="absolute left-0 bottom-full mb-2 z-30 min-w-[220px] rounded-xl py-1.5 shadow-2xl menu-pop"
+          className={`absolute ${alignRight ? 'right-0' : 'left-0'} bottom-full mb-2 z-30 min-w-[220px] rounded-xl py-1.5 shadow-2xl menu-pop`}
           style={{
             background: COLORS.menuBg,
             border: `1px solid ${COLORS.menuBorder}`,
@@ -654,36 +741,80 @@ function MessageMoreMenu({ createdAt, branchActive, onBranch }) {
   );
 }
 
-function ResponseFooter({ text, modelName, createdAt, active, onBranch, userInitials }) {
+function ReplyChip({ label, snippet }) {
+  if (!label) return null;
+  const preview = snippetFromText(snippet);
   return (
-    <div className="flex items-center pl-7 sm:pl-9 min-w-0 flex-wrap gap-y-2">
-      <Avatar label={modelName || 'AI'} isAI />
-      <div style={{ marginLeft: 12, height: 24, display: 'flex', alignItems: 'center' }}>
-        <Dot />
-      </div>
-      <div style={{ marginLeft: 12, height: 24 }} className="flex items-center gap-2 min-w-0">
-        {active ? (
-          <>
-            <AvatarStack labels={[userInitials]} />
-            <span className="text-xs truncate" style={{ color: '#8a8a8a' }}>
-              общий тред по этому ответу
-            </span>
-          </>
+    <div className="flex items-center gap-1.5 min-w-0 mt-1.5" title={preview || label}>
+      <CornerDownRight className="w-3 h-3 shrink-0" style={{ color: '#6b6b6b' }} />
+      <span className="text-[11px] leading-[1.4] truncate py-px" style={{ color: '#8a8a8a' }}>
+        {label}
+        {preview ? (
+          <span style={{ color: '#5c5c5c' }}>{` · «${preview}»`}</span>
         ) : null}
-        {modelName ? (
-          <span className="text-xs truncate max-w-[10rem] sm:max-w-[14rem]" style={{ color: '#8a8a8a' }} title={modelName}>
-            {modelName}
+      </span>
+    </div>
+  );
+}
+
+function ResponseFooter({ text, createdAt, active, onBranch, userInitials }) {
+  return (
+    <div className="flex items-center min-w-0 gap-2 flex-wrap">
+      {active ? (
+        <div className="flex items-center gap-2 min-w-0">
+          <AvatarStack labels={[userInitials]} />
+          <span className="text-xs truncate" style={{ color: '#8a8a8a' }}>
+            общий тред по этому ответу
           </span>
-        ) : null}
+        </div>
+      ) : null}
+      <div className="ml-auto flex items-center gap-0.5">
         <CopyMessageButton text={text} />
-        <MessageMoreMenu createdAt={createdAt} branchActive={active} onBranch={onBranch} />
+        <MessageMoreMenu
+          createdAt={createdAt}
+          branchActive={active}
+          onBranch={onBranch}
+          alignRight
+        />
       </div>
     </div>
   );
 }
 
-function UserBubble({ text, isMe, userInitials, animate }) {
-  const radius = isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px';
+function BubbleTail({ isMe, color }) {
+  const path = isMe
+    ? 'M6 17H0V0c.193 2.84.876 5.767 2.05 8.782.904 2.325 2.446 4.485 4.625 6.48A1 1 0 016 17z'
+    : 'M3 17h6V0c-.193 2.84-.876 5.767-2.05 8.782-.904 2.325-2.446 4.485-4.625 6.48A1 1 0 003 17z';
+
+  return (
+    <svg
+      aria-hidden="true"
+      className={`msg-bubble-tail ${isMe ? 'msg-bubble-tail-right' : 'msg-bubble-tail-left'}`}
+      width="9"
+      height="17"
+      viewBox="0 0 9 17"
+      overflow="visible"
+    >
+      <path d={path} fill={color} />
+    </svg>
+  );
+}
+
+function UserBubble({
+  text,
+  isMe,
+  userInitials,
+  authorName,
+  showName,
+  showAvatar,
+  isFirst,
+  isLast,
+  animate,
+}) {
+  const nameColor = colorFromName(authorName || userInitials);
+  const displayName = authorName || userInitials;
+  const bubbleBg = isMe ? COLORS.myBubble : COLORS.otherBubble;
+
   return (
     <div
       className={[
@@ -694,18 +825,40 @@ function UserBubble({ text, isMe, userInitials, animate }) {
         .filter(Boolean)
         .join(' ')}
     >
-      <div className={`flex items-end gap-2 min-w-0 max-w-full ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-        <Avatar label={userInitials} isAI={false} size="md" />
-        <div
-          style={{
-            maxWidth: 'min(75vw, 28rem)',
-            background: isMe ? COLORS.myBubble : COLORS.otherBubble,
-            color: '#d4d4d4',
-            borderRadius: radius,
-          }}
-          className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0"
-        >
-          {text}
+      <div
+        className={`flex items-end gap-2 min-w-0 max-w-full ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+      >
+        {showAvatar ? (
+          <Avatar
+            label={userInitials}
+            isAI={false}
+            size="md"
+            accentColor={isMe ? undefined : nameColor}
+          />
+        ) : (
+          <div className="w-9 h-9 shrink-0" aria-hidden="true" />
+        )}
+        <div className="msg-bubble-wrap min-w-0" style={{ maxWidth: 'min(75vw, 28rem)' }}>
+          <div
+            className="msg-bubble px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+            style={{
+              background: bubbleBg,
+              color: '#d4d4d4',
+              borderRadius: bubbleBorderRadius({ isMe, isFirst, isLast }),
+            }}
+          >
+            {showName && displayName ? (
+              <p
+                className="text-[13px] font-semibold leading-[1.35] mb-1.5 truncate"
+                style={{ color: nameColor }}
+                title={displayName}
+              >
+                {displayName}
+              </p>
+            ) : null}
+            {text}
+          </div>
+          {isLast ? <BubbleTail isMe={isMe} color={bubbleBg} /> : null}
         </div>
       </div>
     </div>
@@ -713,17 +866,16 @@ function UserBubble({ text, isMe, userInitials, animate }) {
 }
 
 function AIResponse({
-  messageId,
   text,
   modelName,
   createdAt,
   isStreaming,
-  activeThread,
-  onThreadOpen,
   footerActive,
   onFooterOpen,
   userInitials,
   animate,
+  replyLabel,
+  replySnippet,
 }) {
   const waitingForFirstToken = isStreaming && !text?.trim();
   const hadBodyRef = useRef(!waitingForFirstToken);
@@ -734,29 +886,61 @@ function AIResponse({
 
   return (
     <div className={['py-1', animate ? 'msg-enter-ai' : ''].filter(Boolean).join(' ')}>
-      {waitingForFirstToken ? (
-        <GeneratingDot />
-      ) : (
-        <div className={bodyJustAppeared ? 'msg-enter-ai-body' : undefined}>
-          <Paragraph
-            id={`msg-${messageId}`}
-            text={text}
-            activeThread={activeThread}
-            onOpen={onThreadOpen}
-            userInitials={userInitials}
-          />
+      <div
+        style={{
+          background: COLORS.aiCard,
+          border: `1px solid ${COLORS.aiCardBorder}`,
+          borderRadius: 16,
+          boxShadow: `inset 3px 0 0 ${COLORS.accent}`,
+        }}
+      >
+        <div className="px-3.5 sm:px-4 pt-3 pb-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <Avatar label={modelName || 'AI'} isAI />
+            <span
+              className="text-[13px] font-medium truncate"
+              style={{ color: '#EDEDED' }}
+              title={modelName || 'ИИ'}
+            >
+              {modelName || 'ИИ'}
+            </span>
+            <span
+              className="shrink-0 text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded-md"
+              style={{
+                color: COLORS.accent,
+                background: 'rgba(251, 191, 36, 0.12)',
+              }}
+            >
+              ИИ
+            </span>
+          </div>
+          <ReplyChip label={replyLabel} snippet={replySnippet} />
         </div>
-      )}
-      {!isStreaming && (
-        <ResponseFooter
-          text={text}
-          modelName={modelName}
-          createdAt={createdAt}
-          active={footerActive}
-          onBranch={onFooterOpen}
-          userInitials={userInitials}
-        />
-      )}
+
+        {waitingForFirstToken ? (
+          <GeneratingDot />
+        ) : (
+          <div
+            className={['px-3.5 sm:px-4 py-2', bodyJustAppeared ? 'msg-enter-ai-body' : '']
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <MarkdownText text={text} />
+          </div>
+        )}
+
+        {!isStreaming && (
+          <div className="px-3 sm:px-3.5 pb-2.5">
+            <ResponseFooter
+              text={text}
+              createdAt={createdAt}
+              active={footerActive}
+              onBranch={onFooterOpen}
+              userInitials={userInitials}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -778,7 +962,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-4">
+    <div className="w-full max-w-2xl mx-auto">
       <style>{GENERATING_DOT_STYLES}</style>
 
       {messages.length === 0 && (
@@ -787,37 +971,50 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
         </p>
       )}
 
-      {messages.map((msg) => {
+      {messages.map((msg, index) => {
         const animate = isLocalMessageId(msg.id);
+        const prev = messages[index - 1];
+        const next = messages[index + 1];
+        const groupedPrev = isSameUser(prev, msg);
+        const marginTop = index === 0 ? 0 : groupedPrev ? 2 : 10;
 
         if (msg.type === 'user') {
           const mine = msg.isMe === true;
+          const isFirst = !groupedPrev;
+          const isLast = !isSameUser(msg, next);
           return (
-            <UserBubble
-              key={msg.id}
-              text={msg.text}
-              isMe={mine}
-              userInitials={mine ? userInitials : (msg.authorInitials || '?')}
-              animate={animate}
-            />
+            <div key={msg.id} style={{ marginTop }}>
+              <UserBubble
+                text={msg.text}
+                isMe={mine}
+                userInitials={mine ? userInitials : (msg.authorInitials || '?')}
+                authorName={msg.authorName}
+                showName={!mine && isFirst}
+                showAvatar={isLast}
+                isFirst={isFirst}
+                isLast={isLast}
+                animate={animate}
+              />
+            </div>
           );
         }
 
+        const parent = resolveReplyParent(messages, msg);
         return (
-          <AIResponse
-            key={msg.id}
-            messageId={msg.id}
-            text={msg.text}
-            modelName={msg.modelName}
-            createdAt={msg.createdAt}
-            isStreaming={msg.isStreaming}
-            activeThread={activeThread}
-            onThreadOpen={onThreadOpen}
-            footerActive={!!footerActive[msg.id]}
-            onFooterOpen={() => onFooterOpen(msg.id)}
-            userInitials={userInitials}
-            animate={animate}
-          />
+          <div key={msg.id} style={{ marginTop }}>
+            <AIResponse
+              text={msg.text}
+              modelName={msg.modelName}
+              createdAt={msg.createdAt}
+              isStreaming={msg.isStreaming}
+              footerActive={!!footerActive[msg.id]}
+              onFooterOpen={() => onFooterOpen(msg.id)}
+              userInitials={userInitials}
+              animate={animate}
+              replyLabel={replyAuthorLabel(parent)}
+              replySnippet={parent?.contextTextSnippet || parent?.text}
+            />
+          </div>
         );
       })}
     </div>

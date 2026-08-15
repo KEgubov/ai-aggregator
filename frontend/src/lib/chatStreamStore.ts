@@ -12,6 +12,7 @@ export interface ChatStreamSnapshot {
   error: string | null;
   localUserId: string;
   localAssistantId: string | null;
+  parentId: number | null;
 }
 
 export interface StartChatGenerationOptions {
@@ -69,6 +70,7 @@ export function startChatGeneration(options: StartChatGenerationOptions): boolea
     error: null,
     localUserId,
     localAssistantId,
+    parentId: options.parentId ?? null,
   });
   emit(options.chatId);
   void runGeneration(options);
@@ -114,6 +116,7 @@ export function messagesWithStream(
       text: stream.error ? `⚠ ${stream.error}` : stream.assistantText,
       modelName: stream.modelName ?? undefined,
       isStreaming: stream.status === 'running',
+      parentId: stream.parentId,
     });
   }
 

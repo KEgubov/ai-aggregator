@@ -7,6 +7,8 @@ export interface Message {
   isMe?: boolean;
   /** Инициалы автора (для чужих сообщений). */
   authorInitials?: string;
+  /** Имя автора (для чипа «ответ на…»). */
+  authorName?: string;
   modelName?: string;
   isStreaming?: boolean;
   createdAt?: string;
@@ -50,6 +52,7 @@ export function mapMessageFromApi(
     text: dto.content,
     isMe,
     authorInitials: dto.username ? initialsFromName(dto.username) : undefined,
+    authorName: dto.username ?? undefined,
     modelName: dto.ai_model ?? undefined,
     createdAt: dto.created_at,
     parentId: dto.parent_id,
