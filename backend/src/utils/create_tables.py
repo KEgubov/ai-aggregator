@@ -20,8 +20,7 @@ async def create_tables() -> None:
         # sorted_tables возвращает таблицы в порядке зависимости (родители перед детьми),
         # поэтому разворачиваем список, чтобы удалять от дочерних к родительским.
         for table in reversed(Base.metadata.sorted_tables):
-            await conn.execute(
-                text(f'DROP TABLE IF EXISTS {table.fullname} CASCADE'))
+            await conn.execute(text(f"DROP TABLE IF EXISTS {table.fullname} CASCADE"))
 
         await conn.run_sync(Base.metadata.create_all)
 

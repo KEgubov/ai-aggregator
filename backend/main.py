@@ -6,7 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.src.api import main_router
-from backend.src.api.exception_handler import duplicate_error_handler, not_found_error_handler, forbidden_error_handler
+from backend.src.api.exception_handler import (
+    duplicate_error_handler,
+    not_found_error_handler,
+    forbidden_error_handler,
+)
 from backend.src.clients.gemini_client import GeminiClient
 from backend.src.clients.groq_client import GroqClient
 from backend.src.clients.redis_client import redis_client
@@ -28,9 +32,11 @@ setup_logging("AI Aggregator")
 
 logger = logging.getLogger("app")
 
+
 async def init_security(app: FastAPI):
     """Инициализация безопасности"""
     app.state.security = AuthX(config=authx_settings.config)
+
 
 async def init_services(app: FastAPI):
     """Инициализация бизнес-сервисов"""
@@ -38,19 +44,16 @@ async def init_services(app: FastAPI):
         auth_repository=AuthRepository(),
     )
     app.state.user_service = UserService(
-        user_repository=UserRepository(),
-        redis_client=redis_client
+        user_repository=UserRepository(), redis_client=redis_client
     )
     app.state.model_service = ModelService(
         model_repository=ModelRepository(),
     )
     app.state.chat_service = ChatService(
-        chat_repository=ChatRepository(),
-        redis_client=redis_client
+        chat_repository=ChatRepository(), redis_client=redis_client
     )
-    app.state.message_service = MessageService(
-        message_repository=MessageRepository()
-    )
+    app.state.message_service = MessageService(message_repository=MessageRepository())
+
 
 async def init_clients(app: FastAPI):
     """Инициализация внешних клиентов"""
@@ -84,4 +87,3 @@ app.include_router(main_router)
 app.add_exception_handler(DuplicateError, duplicate_error_handler)
 app.add_exception_handler(NotFoundError, not_found_error_handler)
 app.add_exception_handler(ForbiddenError, forbidden_error_handler)
-

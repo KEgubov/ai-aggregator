@@ -3,8 +3,10 @@ from typing import Optional, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+
 class MessageAddDTO(BaseModel):
     """POST /message/send или POST /message — тело запроса."""
+
     chat_id: int
     content: str = Field(max_length=4096)
     # ветвление — только если пользователь ответил на абзац/фрагмент
@@ -12,10 +14,12 @@ class MessageAddDTO(BaseModel):
     context_anchor: Optional[str] = None
     context_text_snippet: Optional[str] = None
 
+
 class MessageSendDTO(MessageAddDTO):
     """Запрос отправки сообщения; при model_id запускается генерация ответа AI."""
 
     model_id: Optional[int] = None
+
 
 class MessageDTO(MessageAddDTO):
     """Сообщение чата с id, путём ветки и метаданными автора/модели."""

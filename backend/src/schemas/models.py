@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+
 class AIModelsDTO(BaseModel):
     """Краткое представление AI-модели для интерфейса."""
 

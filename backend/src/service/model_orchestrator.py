@@ -1,9 +1,11 @@
 from typing import Any, AsyncGenerator
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AIOrchestrator:
     """Маршрутизирует генерацию к Gemini/Groq, стримит ответ и сохраняет его в БД."""
+
     def __init__(self, model_service, message_service, gemini_client, groq_client):
         self.model_service = model_service
         self.message_service = message_service
@@ -12,12 +14,13 @@ class AIOrchestrator:
 
     async def orchestrate_generation(
         self,
+        session: AsyncSession,
         chat_id: int,
         model_id: int,
         parent_id: int,
     ) -> AsyncGenerator[Any, Any]:
         """Стримит ответ выбранной модели и по usage сохраняет сообщение ассистента."""
-        meta_list = await self.model_service.get_meta_for_api(model_id)
+        meta_list = await self.model_service.get_meta_for_api(session, model_id)
 
         if not meta_list:
             raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
@@ -27,10 +30,9 @@ class AIOrchestrator:
         model_name = meta.model_name
         display_name = meta.display_name
 
-        leaf = await self.message_service.get_message(
-            parent_id)
+        leaf = await self.message_service.get_message(session, parent_id)
         history = await self.message_service.get_history_for_generation(
-            chat_id, str(leaf.path)
+            session, chat_id, str(leaf.path)
         )
         parts: list[str] = []
         if provider_name in ["gemini", "gem"]:
@@ -46,18 +48,15 @@ class AIOrchestrator:
             "qwen",
             "whisper",
         ]:
-            stream = self.groq_client.stream_chat(
-                model=model_name, messages=history
-            )
+            stream = self.groq_client.stream_chat(model=model_name, messages=history)
         else:
             raise HTTPException(
-
                 status_code=400, detail=f"Provider '{provider_name}' is not supported"
-
             )
         async for chunk in stream:
             if isinstance(chunk, tuple) and chunk[0] == "usage":
                 await self.message_service.save_ai_message(
+                    session=session,
                     chat_id=chat_id,
                     parent_id=parent_id,
                     ai_model=display_name,

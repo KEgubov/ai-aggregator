@@ -87,9 +87,7 @@ class User(Base):
 
     project_memberships = relationship("ProjectMember", back_populates="user")
     chat_memberships = relationship("ChatMember", back_populates="user")
-    project_chat_memberships = relationship(
-        "ProjectChatMember", back_populates="user"
-    )
+    project_chat_memberships = relationship("ProjectChatMember", back_populates="user")
     chat_messages = relationship("ChatMessage", back_populates="author")
     project_chat_messages = relationship("ProjectChatMessage", back_populates="author")
 
@@ -247,18 +245,12 @@ class ChatMember(Base):
 
     __tablename__ = "chat_members"
 
-    chat_id: Mapped[int] = mapped_column(
-        ForeignKey("chats.chat_id"), primary_key=True
-    )
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.user_id"), primary_key=True
-    )
+    chat_id: Mapped[int] = mapped_column(ForeignKey("chats.chat_id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), primary_key=True)
     joined_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
-    is_owner: Mapped[bool] = mapped_column(
-        default=False, nullable=False
-    )
+    is_owner: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     chat = relationship("Chat", back_populates="members")
     user = relationship("User", back_populates="chat_memberships")
@@ -283,9 +275,7 @@ class ProjectChatMember(Base):
     chat_id: Mapped[int] = mapped_column(
         ForeignKey("project_chats.chat_id"), primary_key=True
     )
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.user_id"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), primary_key=True)
     joined_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
@@ -548,28 +538,28 @@ class ProjectChatMessage(Base):
         back_populates="parent",
     )
 
+
 class ChatInviteLink(Base):
     __tablename__ = "chat_invite_links"
 
     invite_id: Mapped[intpk]
-    token: Mapped[str_255] = mapped_column(unique=True, nullable=False) # то, что попадает в URL: /join/<token>
-    chat_id: Mapped[int] = mapped_column(
-        ForeignKey("chats.chat_id"), nullable=False
-    )
-    created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.user_id"), nullable=False
-    )
+    token: Mapped[str_255] = mapped_column(
+        unique=True, nullable=False
+    )  # то, что попадает в URL: /join/<token>
+    chat_id: Mapped[int] = mapped_column(ForeignKey("chats.chat_id"), nullable=False)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=func.now()
     )
     expires_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True)
-    )     # None = без срока
+    )  # None = без срока
 
-    is_revoked: Mapped[bool] = mapped_column(default=False) # владелец отозвал ссылку
+    is_revoked: Mapped[bool] = mapped_column(default=False)  # владелец отозвал ссылку
     max_uses: Mapped[Optional[int]]
-    uses_count: Mapped[int] = mapped_column(default=0) # сколько раз уже зашли по ссылке
+    uses_count: Mapped[int] = mapped_column(
+        default=0
+    )  # сколько раз уже зашли по ссылке
 
     chat = relationship("Chat", back_populates="invite_links")
     creator = relationship("User")
-

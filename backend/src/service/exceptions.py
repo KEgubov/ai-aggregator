@@ -23,6 +23,7 @@ class DuplicateError(IntegrityError):
         """Строковое представление: ``ERROR_CODE: message``."""
         return f"{self.error_code}: {self.message}"
 
+
 class NotFoundError(Exception):
     def __init__(self, message: str, error_code: str = "NOT_FOUND"):
         self.message = message
@@ -30,6 +31,7 @@ class NotFoundError(Exception):
 
     def __str__(self) -> str:
         return f"{self.error_code}: {self.message}"
+
 
 class ForbiddenError(Exception):
     def __init__(self, message: str, error_code: str = "FORBIDDEN"):

@@ -28,9 +28,11 @@ class GeminiClient:
         for attempt in range(retries):
             try:
                 contents = [
-                    {"role": "user", "parts": [{"text": m["content"]}]}
-                    if m["role"] == "user"
-                    else {"role": "model", "parts": [{"text": m["content"]}]}
+                    (
+                        {"role": "user", "parts": [{"text": m["content"]}]}
+                        if m["role"] == "user"
+                        else {"role": "model", "parts": [{"text": m["content"]}]}
+                    )
                     for m in messages
                 ]
                 stream = await self.client.aio.models.generate_content_stream(
@@ -45,11 +47,14 @@ class GeminiClient:
                         last_usage = chunk.usage_metadata
 
                 if last_usage:
-                    yield ("usage", {
-                        "prompt_token_count": last_usage.prompt_token_count,
-                        "candidates_token_count": last_usage.candidates_token_count,
-                        "total_token_count": last_usage.total_token_count,
-                    })
+                    yield (
+                        "usage",
+                        {
+                            "prompt_token_count": last_usage.prompt_token_count,
+                            "candidates_token_count": last_usage.candidates_token_count,
+                            "total_token_count": last_usage.total_token_count,
+                        },
+                    )
                 else:
                     yield "usage", {}
                 return

@@ -29,4 +29,5 @@ class RedisCacheBackend:
     async def delete_key(self, key: str) -> None:
         await self._redis.delete(key)
 
+
 redis_client = RedisCacheBackend(redis_settings.url)

@@ -1,8 +1,14 @@
 from authx import AuthX
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.api.dependency import get_user_service, get_security, get_auth_service
+from backend.src.api.dependency import (
+    get_user_service,
+    get_security,
+    get_auth_service,
+    get_session,
+)
 from backend.src.schemas.custom import LoginData
 from backend.src.schemas.user_schema import UserAddDTO
 from backend.src.service.auth_service import AuthService
@@ -13,10 +19,12 @@ router = APIRouter(prefix="/user", tags=["User"])
 
 @router.post("/register")
 async def user_register(
-    user: UserAddDTO, user_service: UserService = Depends(get_user_service)
+    user: UserAddDTO,
+    user_service: UserService = Depends(get_user_service),
+    session: AsyncSession = Depends(get_session),
 ):
     """Регистрирует нового пользователя."""
-    user_add = await user_service.user_validate(user)
+    user_add = await user_service.user_validate(session, user)
     return {"status": "ok", "user": user_add}
 
 
@@ -26,9 +34,10 @@ async def login(
     response: Response,
     auth_service: AuthService = Depends(get_auth_service),
     security: AuthX = Depends(get_security),
+    session: AsyncSession = Depends(get_session),
 ) -> dict[str, str]:
     """Аутентифицирует пользователя и выставляет JWT в cookie."""
-    user = await auth_service.resp_authenticate_user(creds)
+    user = await auth_service.resp_authenticate_user(session, creds)
     if not user:
         raise HTTPException(status_code=401, detail="Incorrect login or password")
     token = security.create_access_token(uid=str(user.user_id))
