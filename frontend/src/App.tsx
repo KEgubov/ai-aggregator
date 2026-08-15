@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import AuthForm from './components/AuthForm';
 import ChatHome from './components/ChatHome';
 import ChatView from './components/ChatView';
+import InviteDialog from './components/InviteDialog';
 import ProfileModal from './components/ProfileModal';
 import Sidebar from './components/Sidebar';
 import { fetchProfile, logoutUser } from './api/auth';
-import { createChat, fetchChats, joinChat } from './api/chat';
+import { createChat, fetchChats, fetchInvitePreview, joinChat } from './api/chat';
 import { ApiError } from './api/client';
-import type { Chat } from './types/chat';
+import type { Chat, InvitePreview } from './types/chat';
 import { initialsFromName } from './types/user';
 import { startViewTransition, supportsViewTransition } from './utils/viewTransition';
 
@@ -54,6 +55,10 @@ export default function App() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [shellEnter, setShellEnter] = useState(false);
+  const [pendingInviteToken, setPendingInviteToken] = useState<string | null>(null);
+  const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -91,13 +96,38 @@ export default function App() {
     }
   }, []);
 
+  const clearPendingInvite = useCallback(() => {
+    sessionStorage.removeItem(PENDING_JOIN_TOKEN);
+    clearJoinPath();
+    setPendingInviteToken(null);
+    setInvitePreview(null);
+    setInviteDialogOpen(false);
+  }, []);
+
+  const startInviteFlow = useCallback(async (token: string) => {
+    setJoinError(null);
+    setPendingInviteToken(token);
+    try {
+      const preview = await fetchInvitePreview(token);
+      setInvitePreview(preview);
+      setInviteDialogOpen(true);
+    } catch (err) {
+      sessionStorage.removeItem(PENDING_JOIN_TOKEN);
+      clearJoinPath();
+      setPendingInviteToken(null);
+      setInvitePreview(null);
+      setInviteDialogOpen(false);
+      setJoinError(err instanceof Error ? err.message : 'Не удалось открыть приглашение');
+    }
+  }, []);
+
   const acceptInvite = useCallback(
-    async (token: string): Promise<boolean> => {
+    async (token: string) => {
       setJoinError(null);
+      setIsJoining(true);
       try {
         const chat = await joinChat(token);
-        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
-        clearJoinPath();
+        clearPendingInvite();
         setChats((prev) => {
           if (prev.some((c) => c.chat_id === chat.chat_id)) return prev;
           return [chat, ...prev];
@@ -107,16 +137,20 @@ export default function App() {
           setView('conversation');
           closeSidebarOnMobile();
         });
-        return true;
       } catch (err) {
-        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
-        clearJoinPath();
+        clearPendingInvite();
         setJoinError(err instanceof Error ? err.message : 'Не удалось присоединиться к чату');
-        return false;
+      } finally {
+        setIsJoining(false);
       }
     },
-    [closeSidebarOnMobile],
+    [clearPendingInvite, closeSidebarOnMobile],
   );
+
+  const declineInvite = useCallback(() => {
+    if (isJoining) return;
+    clearPendingInvite();
+  }, [clearPendingInvite, isJoining]);
 
   const bootstrap = useCallback(async () => {
     const pathToken = readJoinTokenFromPath();
@@ -132,17 +166,15 @@ export default function App() {
     const isAuthenticated = await loadChats();
     if (isAuthenticated) {
       await loadProfile();
+      setView('chats');
       const pending = sessionStorage.getItem(PENDING_JOIN_TOKEN) ?? pathToken;
       if (pending) {
-        const ok = await acceptInvite(pending);
-        if (!ok) setView('chats');
-        return;
+        await startInviteFlow(pending);
       }
-      setView('chats');
     } else {
       setView('auth');
     }
-  }, [acceptInvite, loadChats, loadProfile]);
+  }, [loadChats, loadProfile, startInviteFlow]);
 
   useEffect(() => {
     void bootstrap();
@@ -170,33 +202,13 @@ export default function App() {
     await Promise.all([loadChats(), loadProfile()]);
     setSidebarOpen(isDesktopViewport());
 
+    revealApp(() => setView('chats'));
+
     const pending = sessionStorage.getItem(PENDING_JOIN_TOKEN) ?? readJoinTokenFromPath();
     if (pending) {
-      setJoinError(null);
-      try {
-        const chat = await joinChat(pending);
-        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
-        clearJoinPath();
-        setChats((prev) => {
-          if (prev.some((c) => c.chat_id === chat.chat_id)) return prev;
-          return [chat, ...prev];
-        });
-        revealApp(() => {
-          setActiveChat(chat);
-          setView('conversation');
-          closeSidebarOnMobile();
-        });
-      } catch (err) {
-        sessionStorage.removeItem(PENDING_JOIN_TOKEN);
-        clearJoinPath();
-        setJoinError(err instanceof Error ? err.message : 'Не удалось присоединиться к чату');
-        revealApp(() => setView('chats'));
-      }
-      return;
+      await startInviteFlow(pending);
     }
-
-    revealApp(() => setView('chats'));
-  }, [closeSidebarOnMobile, loadChats, loadProfile, revealApp]);
+  }, [loadChats, loadProfile, revealApp, startInviteFlow]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -212,6 +224,10 @@ export default function App() {
     setCurrentUserId(null);
     setProfileOpen(false);
     setJoinError(null);
+    setPendingInviteToken(null);
+    setInvitePreview(null);
+    setInviteDialogOpen(false);
+    setIsJoining(false);
     setView('auth');
   }, []);
 
@@ -386,6 +402,18 @@ export default function App() {
           setUserLabel(username || DEFAULT_LABEL);
           setUserInitials(initialsFromName(username));
         }}
+      />
+
+      <InviteDialog
+        open={inviteDialogOpen}
+        name={invitePreview?.name ?? 'Чат'}
+        description={invitePreview?.description}
+        alreadyMember={invitePreview?.already_member}
+        isLoading={isJoining}
+        onJoin={() => {
+          if (pendingInviteToken) void acceptInvite(pendingInviteToken);
+        }}
+        onDecline={declineInvite}
       />
     </div>
   );

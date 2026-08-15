@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { Chat, ChatMember } from '../types/chat';
+import type { Chat, ChatMember, InvitePreview } from '../types/chat';
 
 interface ChatsResponse {
   status: string;
@@ -70,6 +70,19 @@ export async function joinChat(token: string): Promise<Chat> {
     method: 'POST',
   });
   return data.chat;
+}
+
+interface InvitePreviewResponse {
+  status: string;
+  invite: InvitePreview;
+}
+
+/** Возвращает название чата по invite-токену без вступления. */
+export async function fetchInvitePreview(token: string): Promise<InvitePreview> {
+  const data = await apiFetch<InvitePreviewResponse>(
+    `/chat/join/${encodeURIComponent(token)}`,
+  );
+  return data.invite;
 }
 
 interface RenameChatResponse {

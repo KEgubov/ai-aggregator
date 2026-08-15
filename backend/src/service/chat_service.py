@@ -142,6 +142,22 @@ class ChatService:
                 return result_dto
         return None
 
+    async def preview_invite(self, session: AsyncSession, token: str, user_id: int) -> dict:
+        invite = await self.chat_repository.find_invite_link(session, token)
+        if not invite:
+            raise NotFoundError(message="Invite not found")
+        chat = await self.chat_repository.get_chat_by_id(session, invite.chat_id)
+        if not chat:
+            raise NotFoundError(message="Chat not found")
+        already_member = await self.chat_repository.user_in_chat_member(
+            session, invite.chat_id, user_id
+        )
+        return {
+            "name": chat.name,
+            "description": chat.description,
+            "already_member": already_member is not None,
+        }
+
     async def rename_chat(
         self, session: AsyncSession, user_id: int, chat_id: int, name: str
     ) -> ChatDTO | None:

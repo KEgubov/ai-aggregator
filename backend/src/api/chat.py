@@ -96,6 +96,17 @@ async def join(
     return {"status": "ok", "chat": chat}
 
 
+@router.get("/join/{token}")
+async def preview_join(
+    token: str,
+    current_user=Depends(get_current_user),
+    chat_service=Depends(get_chat_service),
+    session: AsyncSession = Depends(get_session),
+):
+    preview = await chat_service.preview_invite(session, token, current_user.user_id)
+    return {"status": "ok", "invite": preview}
+
+
 @router.patch("/{chat_id}/rename")
 async def rename(
     chat_id: int,

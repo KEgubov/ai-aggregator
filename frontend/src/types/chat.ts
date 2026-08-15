@@ -12,3 +12,9 @@ export interface ChatMember {
   about_me: string;
   is_owner: boolean;
 }
+
+export interface InvitePreview {
+  name: string;
+  description?: string | null;
+  already_member: boolean;
+}
