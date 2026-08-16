@@ -1,8 +1,10 @@
 import logging
 
+from pydantic_core.core_schema import model_ser_schema
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.schemas.custom import AIModelMetaDTO, ModelProviderResponse
+from backend.src.repository.models_repository import ModelRepository
+from backend.src.schemas.custom import AIModelMetaDTO, ModelProviderResponse, LinkedModelDTO
 
 logger = logging.getLogger("app")
 
@@ -49,3 +51,11 @@ class ModelService:
             logger.warning(f"Model with id {model_id} not linked")
             return False
         return True
+
+    async def linked_model_validate(self, session: AsyncSession, chat_id: int, user_id: int) -> LinkedModelDTO | None:
+        linked_model = await self.model_repository.find_linked_model_in_chat(session, chat_id, user_id)
+        if linked_model:
+            result_dto = LinkedModelDTO.model_validate(linked_model, from_attributes=True)
+            return result_dto
+        return None
+

@@ -1,8 +1,9 @@
 from sqlalchemy import select, update, Row
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import and_
 
-from backend.src.core.database import async_session
 from backend.src.models.orm_models import AIModel, Chat, AIProviders, AIProviderModel
+from backend.src.service.exceptions import NotFoundError
 
 
 class ModelRepository:
@@ -48,7 +49,7 @@ class ModelRepository:
         display_name = result.scalar_one_or_none()
 
         if not display_name:
-            raise ValueError(f"Модель с ID {model_id} не найдена")
+            raise NotFoundError(f"Модель с ID {model_id} не найдена")
 
         chat_query = select(Chat).where(
             Chat.chat_id == chat_id, Chat.owner_id == owner_id
@@ -70,3 +71,14 @@ class ModelRepository:
         await session.execute(stmt)
         await session.commit()
         return True
+
+    @staticmethod
+    async def find_linked_model_in_chat(
+        session: AsyncSession, chat_id: int, user_id: int
+    ) -> Row[tuple[list[str] | None]] | None:
+        query = (
+            select(Chat.ai_models)
+            .where(Chat.chat_id == chat_id, Chat.owner_id == user_id)
+        )
+        result = await session.execute(query)
+        return result.first() if result else None

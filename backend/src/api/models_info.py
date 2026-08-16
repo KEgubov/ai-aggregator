@@ -21,3 +21,15 @@ async def get_model_list(
     if not models:
         raise HTTPException(status_code=404, detail="No models found")
     return {"status": "ok", "models": models}
+
+@router.get("/linked")
+async def get_linked_models(
+    chat_id: int,
+    model_service: ModelService = Depends(get_model_service),
+    current_user: CurrentUserDTO = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    linked_models = await model_service.linked_model_validate(session, chat_id, current_user.user_id)
+    if not linked_models:
+        return {"status": "ok", "linked_models": []}
+    return {"status": "ok", "linked_models": linked_models}

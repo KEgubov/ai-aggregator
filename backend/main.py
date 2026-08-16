@@ -84,6 +84,12 @@ app.add_middleware(
 
 app.include_router(main_router)
 
+
+@app.get("/health", include_in_schema=False)
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 app.add_exception_handler(DuplicateError, duplicate_error_handler)
 app.add_exception_handler(NotFoundError, not_found_error_handler)
 app.add_exception_handler(ForbiddenError, forbidden_error_handler)
