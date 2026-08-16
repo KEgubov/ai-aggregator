@@ -6,7 +6,7 @@ import ChatMembersAvatars from './ChatMembersAvatars';
 import ChatInfoModal from './ChatInfoModal';
 import SidebarToggle from './SidebarToggle';
 import { createChatInvite } from '../api/chat';
-import { fetchModels, findModelByName, resolveModelDisplayName, type ApiModel } from '../api/models';
+import { fetchModels, isChatModel, resolveModelDisplayName, resolveTargetModels, type ApiModel } from '../api/models';
 import { fetchMessages } from '../api/message';
 import {
   clearChatStream,
@@ -44,15 +44,6 @@ function mapApiModelToInput(model: ApiModel, index: number) {
   };
 }
 
-function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiModel[] {
-  if (modelTokens.length === 0) {
-    return [];
-  }
-  return modelTokens
-    .map((name) => findModelByName(apiModels, name))
-    .filter((m): m is ApiModel => Boolean(m));
-}
-
 function mapMessagesWithDisplayNames(
   apiMessages: ApiMessage[],
   models: ApiModel[],
@@ -68,11 +59,19 @@ function mapMessagesWithDisplayNames(
   });
 }
 
+const INVITE_HINT_HOLD_MS = 1800;
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 interface ChatViewProps {
   chat: Chat;
   currentUserId?: number | null;
   userInitials?: string;
   userLabel?: string;
+  initialInviteHint?: string | null;
+  sidebarOpen?: boolean;
   onToggleSidebar?: () => void;
   onChatRenamed?: (chat: Chat) => void;
 }
@@ -82,6 +81,8 @@ export default function ChatView({
   currentUserId = null,
   userInitials = 'Я',
   userLabel,
+  initialInviteHint = null,
+  sidebarOpen = false,
   onToggleSidebar,
   onChatRenamed,
 }: ChatViewProps) {
@@ -92,13 +93,15 @@ export default function ChatView({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteHint, setInviteHint] = useState<string | null>(null);
+  const [inviteHint, setInviteHint] = useState<string | null>(initialInviteHint);
+  const [inviteHintLeaving, setInviteHintLeaving] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
 
   const threadScrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerPad, setComposerPad] = useState(96);
   const inviteHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openedWithHintRef = useRef(Boolean(initialInviteHint));
   const modelsLoadedRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
   const loadSeqRef = useRef(0);
@@ -127,7 +130,7 @@ export default function ChatView({
   }, [chat.chat_id]);
 
   const inputModels = useMemo(
-    () => apiModels.map((model, index) => mapApiModelToInput(model, index)),
+    () => apiModels.filter(isChatModel).map((model, index) => mapApiModelToInput(model, index)),
     [apiModels],
   );
 
@@ -159,7 +162,6 @@ export default function ChatView({
     const seq = ++loadSeqRef.current;
     setIsLoadingMessages(true);
     setMessagesError(null);
-    setInviteHint(null);
 
     void (async () => {
       try {
@@ -213,15 +215,36 @@ export default function ChatView({
   }, [displayMessages, composerPad]);
 
   useEffect(() => {
+    if (initialInviteHint) {
+      inviteHintTimerRef.current = setTimeout(() => {
+        if (prefersReducedMotion()) {
+          setInviteHint(null);
+          setInviteHintLeaving(false);
+        } else {
+          setInviteHintLeaving(true);
+        }
+      }, INVITE_HINT_HOLD_MS);
+    }
     return () => {
       if (inviteHintTimerRef.current) clearTimeout(inviteHintTimerRef.current);
     };
+    // Подсказка с главной должна попасть в первый кадр (и в snapshot View Transition).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const showInviteHint = useCallback((text: string) => {
+    openedWithHintRef.current = false;
+    setInviteHintLeaving(false);
     setInviteHint(text);
     if (inviteHintTimerRef.current) clearTimeout(inviteHintTimerRef.current);
-    inviteHintTimerRef.current = setTimeout(() => setInviteHint(null), 2200);
+    inviteHintTimerRef.current = setTimeout(() => {
+      if (prefersReducedMotion()) {
+        setInviteHint(null);
+        setInviteHintLeaving(false);
+        return;
+      }
+      setInviteHintLeaving(true);
+    }, INVITE_HINT_HOLD_MS);
   }, []);
 
   const handleInvite = useCallback(async () => {
@@ -329,11 +352,15 @@ export default function ChatView({
   return (
     <div className="h-full w-full bg-black text-white flex flex-col">
       <header
-        className="shrink-0 px-3 sm:px-4 py-2"
+        className="chat-topbar shrink-0 px-3 sm:px-4 py-2"
         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
       >
         <div className="flex items-center gap-1 min-w-0">
-          {onToggleSidebar && <SidebarToggle onClick={onToggleSidebar} />}
+          {onToggleSidebar && !sidebarOpen && (
+            <div className="md:hidden">
+              <SidebarToggle onClick={onToggleSidebar} />
+            </div>
+          )}
           <div className="flex items-center min-w-0 px-1.5 py-1">
             <button
               type="button"
@@ -376,7 +403,18 @@ export default function ChatView({
             </button>
             {inviteHint && (
               <span
-                className="absolute right-0 top-[calc(100%+6px)] z-50 whitespace-nowrap rounded-md px-2 py-1 text-[11px] shadow-lg"
+                className={[
+                  'invite-hint',
+                  openedWithHintRef.current ? 'invite-hint-static' : '',
+                  inviteHintLeaving ? 'is-leaving' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onAnimationEnd={(event) => {
+                  if (event.animationName !== 'invite-hint-out') return;
+                  setInviteHint(null);
+                  setInviteHintLeaving(false);
+                }}
                 style={{
                   background: COLORS.card,
                   color: inviteHint === 'Ссылка скопирована' ? COLORS.accent : '#f87171',
@@ -420,6 +458,7 @@ export default function ChatView({
             <ChatInput
               aiModels={inputModels}
               isSending={isSending}
+              menuPlacement="up"
               onMentionOpen={handleMentionOpen}
               onSend={handleSend}
               placeholder="Напишите сообщение или введите @ для выбора модели…"

@@ -1,3 +1,5 @@
+import { ApiError, apiFetch } from './client';
+
 export interface ApiModel {
   model_id: number;
   model_name: string;
@@ -8,6 +10,11 @@ export interface ApiModel {
 interface ModelsListResponse {
   status: string;
   models: ApiModel[];
+}
+
+interface LinkedModelsResponse {
+  status: string;
+  linked_models: string[] | { ai_models?: string[] | null } | null;
 }
 
 export async function fetchModels(): Promise<ApiModel[]> {
@@ -30,6 +37,27 @@ export async function fetchModels(): Promise<ApiModel[]> {
   return data.models ?? [];
 }
 
+function parseLinkedNames(raw: LinkedModelsResponse['linked_models']): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter((name): name is string => typeof name === 'string' && name.length > 0);
+  }
+  const names = raw.ai_models;
+  if (!Array.isArray(names)) return [];
+  return names.filter((name): name is string => typeof name === 'string' && name.length > 0);
+}
+
+/** Актуальные модели, привязанные к чату. 404 (чат без моделей) → []. */
+export async function fetchLinkedModels(chatId: number): Promise<string[]> {
+  try {
+    const data = await apiFetch<LinkedModelsResponse>(`/model/linked?chat_id=${chatId}`);
+    return parseLinkedNames(data.linked_models);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return [];
+    throw err;
+  }
+}
+
 export function findModelByName(models: ApiModel[], name: string): ApiModel | undefined {
   const normalized = name.trim().toLowerCase();
   return (
@@ -50,4 +78,20 @@ export function resolveModelDisplayName(
 
 export function findModelById(models: ApiModel[], id: number): ApiModel | undefined {
   return models.find((m) => m.model_id === id);
+}
+
+const NON_CHAT_MODEL_RE =
+  /guard|moderation|classifier|embed|whisper|tts|orpheus|speech-to|text-to-speech|safety/i;
+
+/** Каталог для чата: без модерации, эмбеддингов и TTS. */
+export function isChatModel(model: ApiModel): boolean {
+  return !NON_CHAT_MODEL_RE.test(model.display_name) && !NON_CHAT_MODEL_RE.test(model.model_name);
+}
+
+/** Резолвит @-токены моделей в записи каталога. */
+export function resolveTargetModels(apiModels: ApiModel[], modelTokens: string[]): ApiModel[] {
+  if (modelTokens.length === 0) return [];
+  return modelTokens
+    .map((name) => findModelByName(apiModels, name))
+    .filter((model): model is ApiModel => Boolean(model));
 }

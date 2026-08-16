@@ -15,6 +15,17 @@ export function supportsViewTransition(): boolean {
   );
 }
 
+/** True while a directional view transition class is on <html>. */
+export function isViewTransitioning(): boolean {
+  if (typeof document === 'undefined') return false;
+  const { classList } = document.documentElement;
+  return (
+    classList.contains('vt-to-home') ||
+    classList.contains('vt-to-chat') ||
+    classList.contains('vt-auth-enter')
+  );
+}
+
 /**
  * Runs a React state update inside the View Transition API when available
  * (see https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API).

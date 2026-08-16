@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Mic,
   ArrowUp,
   Bot,
+  Search,
   Users,
   type LucideIcon,
 } from 'lucide-react';
+import { isViewTransitioning } from '../utils/viewTransition';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Точные цвета/отступы/выравнивание живут в обычном CSS-блоке (не в Tailwind
@@ -25,6 +28,9 @@ const CHAT_INPUT_STYLES = `
   overflow: visible;
   background: transparent;
   animation: cip-rise-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.cip-root.cip-no-enter {
+  animation: none;
 }
 
 .cip-box {
@@ -100,7 +106,7 @@ const CHAT_INPUT_STYLES = `
 .cip-send-btn:disabled { opacity: 0.55; cursor: default; }
 
 @media (max-width: 480px) {
-  .cip-menu { max-width: 100%; }
+  .cip-menu { width: min(100vw - 16px, 100%) !important; }
 }
 
 /* Привязанная модель — над полем ввода, живёт между отправками */
@@ -193,25 +199,53 @@ const CHAT_INPUT_STYLES = `
   transition: opacity .15s ease, color .15s ease;
 }
 
-/* Меню подсказок (@) — один контейнер, один общий скролл */
+/* Меню подсказок (@) — портал, позиция считается от композера */
 .cip-menu {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  margin-bottom: 8px;
-  width: 100%;
-  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
   background: #2D2D2D;
   border: 1px solid #424242;
   border-radius: 16px;
   box-shadow: 0 20px 40px rgba(0,0,0,.5);
-  z-index: 50;
   overflow: hidden;
-  transform-origin: bottom left;
-  animation: cip-menu-in 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  z-index: 80;
 }
+.cip-menu.cip-menu-up {
+  transform-origin: bottom left;
+  animation: cip-menu-in-up 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.cip-menu.cip-menu-down {
+  transform-origin: top left;
+  animation: cip-menu-in-down 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.cip-menu-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 8px 8px 2px;
+  padding: 0 10px;
+  height: 36px;
+  border-radius: 10px;
+  background: #212121;
+  color: #949494;
+}
+.cip-menu-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #EDEDED;
+  font: inherit;
+  font-size: 14px;
+}
+.cip-menu-search input::placeholder { color: #8e8e8e; }
 .cip-menu-scroll {
-  max-height: 290px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 6px 0;
   scrollbar-width: thin;
@@ -250,9 +284,6 @@ const CHAT_INPUT_STYLES = `
 .cip-menu-row.cip-active { background: #3C3C3C; }
 .cip-row-name { font-size: 14px; color: #EDEDED; display: block; }
 .cip-row-sub { font-size: 12px; color: #949494; display: block; }
-.cip-row-count { font-size: 12px; color: #949494; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.cip-dot { width: 6px; height: 6px; border-radius: 999px; background: #6B6B6B; transition: background-color .15s ease; }
-.cip-dot.cip-on { background: #F5A623; }
 .cip-no-results { padding: 24px 12px; text-align: center; color: #949494; font-size: 13px; }
 
 /* Тег в тексте — без рамок/фона, на базовой линии. Текст ВСЕГДА жёлтый, цвет не
@@ -301,10 +332,20 @@ const CHAT_INPUT_STYLES = `
   }
 }
 
-@keyframes cip-menu-in {
+@keyframes cip-menu-in-up {
   from {
     opacity: 0;
     transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes cip-menu-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -342,6 +383,8 @@ const CHAT_INPUT_STYLES = `
 @media (prefers-reduced-motion: reduce) {
   .cip-root,
   .cip-menu,
+  .cip-menu.cip-menu-up,
+  .cip-menu.cip-menu-down,
   .cip-bound-row,
   .cip-send-cluster,
   .cip-token {
@@ -395,8 +438,14 @@ function getFilteredLists(
   teamMembers: InputTeamMember[],
 ): { models: InputAiModel[]; members: InputTeamMember[]; flat: FlatItem[] } {
   const q = query.trim().toLowerCase();
-  const models = aiModels.filter((m) => m.name.toLowerCase().includes(q));
-  const members = teamMembers.filter((m) => m.name.toLowerCase().includes(q));
+  const models = q
+    ? aiModels.filter(
+        (m) => m.name.toLowerCase().includes(q) || m.desc.toLowerCase().includes(q),
+      )
+    : aiModels;
+  const members = q
+    ? teamMembers.filter((m) => m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q))
+    : teamMembers;
   const flat: FlatItem[] = [
     ...models.map((m): FlatItem => ({ kind: 'model', ...m })),
     ...members.map((m): FlatItem => ({ kind: 'member', ...m })),
@@ -437,6 +486,22 @@ interface SendConfig {
 // Вспомогательные функции работы с contentEditable / Selection API
 // ────────────────────────────────────────────────────────────────────────────
 
+function deepestLastTextNode(node: Node): Text | null {
+  let current: Node | null = node;
+  while (current && current.nodeType !== Node.TEXT_NODE) {
+    current = current.lastChild;
+  }
+  return current?.nodeType === Node.TEXT_NODE ? (current as Text) : null;
+}
+
+function caretFromElementOffset(el: Node, offset: number): { text: string; node: Text; offset: number } | null {
+  const prev = el.childNodes[offset - 1];
+  if (!prev) return null;
+  const textNode = prev.nodeType === Node.TEXT_NODE ? (prev as Text) : deepestLastTextNode(prev);
+  if (!textNode) return null;
+  return { text: textNode.textContent || '', node: textNode, offset: textNode.length };
+}
+
 function getTextBeforeCaret(root: HTMLElement): { text: string; node: Text | null; offset: number } {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return { text: '', node: null, offset: 0 };
@@ -450,7 +515,26 @@ function getTextBeforeCaret(root: HTMLElement): { text: string; node: Text | nul
       offset: range.startOffset,
     };
   }
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const fromEl = caretFromElementOffset(node, range.startOffset);
+    if (fromEl) return fromEl;
+  }
   return { text: '', node: null, offset: 0 };
+}
+
+/** Последний текстовый узел, если поле заканчивается незакрытым "@query". */
+function findTrailingMentionCaret(root: HTMLElement): { text: string; node: Text; offset: number } | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let last: Text | null = null;
+  let current: Node | null;
+  while ((current = walker.nextNode())) {
+    if (current.parentElement?.closest('[data-token]')) continue;
+    last = current as Text;
+  }
+  if (!last) return null;
+  const text = last.textContent || '';
+  if (!/(?:^|\s)@([^\s@]*)$/.test(text)) return null;
+  return { text, node: last, offset: last.length };
 }
 
 function placeCaretAfter(node: Node) {
@@ -616,24 +700,116 @@ function buildBadgeElement(item: FlatItem): HTMLElement {
 // Меню подсказок (@)
 // ────────────────────────────────────────────────────────────────────────────
 
+export type MenuPlacement = 'up' | 'down';
+
+function useAnchoredMenuStyle(
+  open: boolean,
+  anchorRef: React.RefObject<HTMLElement>,
+  placement: MenuPlacement,
+): React.CSSProperties {
+  const [style, setStyle] = useState<React.CSSProperties>({});
+
+  const update = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const gap = 8;
+    const pad = 8;
+    const left = Math.max(pad, rect.left);
+    const width = Math.max(220, Math.min(rect.width, window.innerWidth - left - pad));
+    if (placement === 'down') {
+      const top = rect.bottom + gap;
+      const maxHeight = Math.max(140, Math.min(380, window.innerHeight - top - 12));
+      setStyle({ position: 'fixed', top, left, width, maxHeight });
+    } else {
+      const bottom = window.innerHeight - rect.top + gap;
+      const maxHeight = Math.max(140, Math.min(380, rect.top - 12));
+      setStyle({ position: 'fixed', bottom, left, width, maxHeight });
+    }
+  }, [anchorRef, placement]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open, update]);
+
+  return style;
+}
+
 interface SuggestionMenuProps {
   models: InputAiModel[];
   members: InputTeamMember[];
   flat: FlatItem[];
   highlightedIndex: number;
+  placement: MenuPlacement;
+  style: React.CSSProperties;
+  showSearch: boolean;
+  searchValue: string;
+  searchRef: React.Ref<HTMLInputElement>;
+  menuRef: React.Ref<HTMLDivElement>;
+  onSearchChange: (value: string) => void;
   onHover: (index: number) => void;
   onSelect: (item: FlatItem) => void;
+  onFocusInside: () => void;
+  onMenuKeyDown: (e: React.KeyboardEvent) => void;
 }
 
-function SuggestionMenu({ models, members, flat, highlightedIndex, onHover, onSelect }: SuggestionMenuProps) {
+function SuggestionMenu({
+  models,
+  members,
+  flat,
+  highlightedIndex,
+  placement,
+  style,
+  showSearch,
+  searchValue,
+  searchRef,
+  menuRef,
+  onSearchChange,
+  onHover,
+  onSelect,
+  onFocusInside,
+  onMenuKeyDown,
+}: SuggestionMenuProps) {
   const noResults = flat.length === 0;
 
-  return (
-    <div onMouseDown={(e) => e.preventDefault()} className="cip-menu">
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="listbox"
+      style={style}
+      onMouseDown={(e) => {
+        if ((e.target as HTMLElement).closest('input')) return;
+        e.preventDefault();
+      }}
+      className={`cip-menu ${placement === 'down' ? 'cip-menu-down' : 'cip-menu-up'}`}
+    >
+      {showSearch && (
+        <div className="cip-menu-search">
+          <Search size={14} aria-hidden="true" />
+          <input
+            ref={searchRef}
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
+            onFocus={onFocusInside}
+            onKeyDown={onMenuKeyDown}
+            placeholder="Поиск моделей…"
+            aria-label="Поиск моделей"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+      )}
       <div className="cip-menu-scroll">
         {models.length > 0 && (
           <>
-            <div className="cip-group-label">ИИ-модели</div>
+            <div className="cip-group-label">Модели</div>
             {models.map((m) => {
               const idx = flat.findIndex((f) => f.kind === 'model' && f.id === m.id);
               const active = idx === highlightedIndex;
@@ -641,6 +817,8 @@ function SuggestionMenu({ models, members, flat, highlightedIndex, onHover, onSe
                 <button
                   key={m.id}
                   type="button"
+                  role="option"
+                  aria-selected={active}
                   onMouseEnter={() => onHover(idx)}
                   onClick={() => onSelect({ kind: 'model', ...m })}
                   className={`cip-menu-row${active ? ' cip-active' : ''}`}
@@ -648,11 +826,7 @@ function SuggestionMenu({ models, members, flat, highlightedIndex, onHover, onSe
                   <m.Icon size={20} color="#fbbf24" style={{ flexShrink: 0 }} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span className="cip-row-name">{m.name}</span>
-                    <span className="cip-row-sub">{m.desc}</span>
-                  </span>
-                  <span className="cip-row-count">
-                    <span className={`cip-dot${m.count > 0 ? ' cip-on' : ''}`} />
-                    {m.count}
+                    {m.desc && <span className="cip-row-sub">{m.desc}</span>}
                   </span>
                 </button>
               );
@@ -662,7 +836,7 @@ function SuggestionMenu({ models, members, flat, highlightedIndex, onHover, onSe
 
         {members.length > 0 && (
           <>
-            <div className="cip-group-label">Участники проекта</div>
+            <div className="cip-group-label">Участники</div>
             {members.map((p) => {
               const idx = flat.findIndex((f) => f.kind === 'member' && f.id === p.id);
               const active = idx === highlightedIndex;
@@ -670,6 +844,8 @@ function SuggestionMenu({ models, members, flat, highlightedIndex, onHover, onSe
                 <button
                   key={p.id}
                   type="button"
+                  role="option"
+                  aria-selected={active}
                   onMouseEnter={() => onHover(idx)}
                   onClick={() => onSelect({ kind: 'member', ...p })}
                   className={`cip-menu-row${active ? ' cip-active' : ''}`}
@@ -702,7 +878,8 @@ function SuggestionMenu({ models, members, flat, highlightedIndex, onHover, onSe
 
         {noResults && <div className="cip-no-results">Ничего не найдено</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -716,13 +893,35 @@ export type ChatInputSendPayload = {
   memberTokens: string[];
 };
 
+/** Смена `key` применяет черновик, даже если текст и модель те же. */
+export type ChatInputDraft = {
+  key: number;
+  text?: string;
+  modelId?: string | null;
+  openPicker?: boolean;
+};
+
 export interface ChatInputProps {
   placeholder?: string;
   aiModels?: InputAiModel[];
   teamMembers?: InputTeamMember[];
   isSending?: boolean;
+  autoFocus?: boolean;
+  draft?: ChatInputDraft | null;
+  menuPlacement?: MenuPlacement;
   onMentionOpen?: () => void;
+  onMenuOpenChange?: (open: boolean) => void;
   onSend?: (payload: ChatInputSendPayload) => boolean | void | Promise<boolean | void>;
+}
+
+function placeCaretAtRootEnd(root: HTMLElement) {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 function ChatInput({
@@ -730,19 +929,30 @@ function ChatInput({
   aiModels = [],
   teamMembers = [],
   isSending = false,
+  autoFocus = false,
+  draft = null,
+  menuPlacement = 'up',
   onMentionOpen,
+  onMenuOpenChange,
   onSend,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLDivElement>(null);
   const sendLockRef = useRef(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const blurTimerRef = useRef<number | null>(null);
+  const focusDetectRafRef = useRef<number | null>(null);
   const boxHeightRef = useRef<number | null>(null);
   const heightAnimGenRef = useRef(0);
   const mentionRef = useRef<MentionAnchor>({ mode: 'none' });
+  const [skipEnter] = useState(() => isViewTransitioning());
 
   const [isEmpty, setIsEmpty] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
+  const [menuSource, setMenuSource] = useState<'mention' | 'picker'>('mention');
   const [mentionQuery, setMentionQuery] = useState('');
+  const [pickerSearch, setPickerSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionActive, setMentionActive] = useState(false);
   /** Модель, привязанная к окну ввода — остаётся после отправки, пока не удалят тег. */
@@ -754,10 +964,12 @@ function ChatInput({
     [boundModel],
   );
 
+  const filterQuery = menuSource === 'picker' ? pickerSearch : mentionQuery;
   const { models, members, flat } = useMemo(
-    () => getFilteredLists(mentionQuery, aiModels, teamMembers),
-    [mentionQuery, aiModels, teamMembers],
+    () => getFilteredLists(filterQuery, aiModels, teamMembers),
+    [filterQuery, aiModels, teamMembers],
   );
+  const menuStyle = useAnchoredMenuStyle(showMenu, boxRef, menuPlacement);
 
   useEffect(() => {
     try {
@@ -832,12 +1044,39 @@ function ChatInput({
     });
   }, [animateBoxHeight]);
 
+  const cancelBlurClose = useCallback(() => {
+    if (blurTimerRef.current != null) {
+      window.clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+  }, []);
+
   const closeMenu = useCallback(() => {
     setShowMenu(false);
     setMentionQuery('');
+    setPickerSearch('');
+    setMenuSource('mention');
     setHighlightedIndex(0);
     mentionRef.current = { mode: 'none' };
   }, []);
+
+  const openPicker = useCallback(
+    (highlightId?: string) => {
+      cancelBlurClose();
+      mentionRef.current = { mode: 'bound' };
+      setMenuSource('picker');
+      setMentionQuery('');
+      setPickerSearch('');
+      setHighlightedIndex(
+        highlightId != null
+          ? Math.max(0, getFullFlatIndex('model', highlightId, aiModels, teamMembers))
+          : 0,
+      );
+      setShowMenu(true);
+      onMentionOpen?.();
+    },
+    [aiModels, teamMembers, onMentionOpen, cancelBlurClose],
+  );
 
   const syncFromDom = useCallback(() => {
     const root = inputRef.current;
@@ -856,6 +1095,84 @@ function ChatInput({
     });
     setMemberTokenNames(members_);
   }, []);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    if (!window.matchMedia('(min-width: 768px)').matches) return;
+    inputRef.current?.focus();
+  }, [autoFocus]);
+
+  useEffect(() => {
+    onMenuOpenChange?.(showMenu);
+  }, [showMenu, onMenuOpenChange]);
+
+  useEffect(() => {
+    if (!showMenu) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (boxRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      const root = inputRef.current;
+      if (root && mentionRef.current.mode === 'range') unwrapMentionLiveNode(root);
+      setMentionActive(false);
+      closeMenu();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [showMenu, closeMenu]);
+
+  useLayoutEffect(() => {
+    if (showMenu && menuSource === 'picker') {
+      searchRef.current?.focus();
+    }
+  }, [showMenu, menuSource]);
+
+  const draftKey = draft?.key;
+  useEffect(() => {
+    if (draftKey == null || !draft) return;
+
+    cancelBlurClose();
+    setMentionActive(false);
+
+    if (draft.modelId) {
+      const model = aiModels.find((item) => item.id === draft.modelId);
+      if (model) setBoundModel(model);
+    } else if (draft.modelId === null) {
+      setBoundModel(null);
+    }
+
+    const root = inputRef.current;
+    if (root && draft.text !== undefined) {
+      root.textContent = draft.text;
+      syncFromDom();
+    }
+
+    if (draft.openPicker) {
+      mentionRef.current = { mode: 'bound' };
+      setMenuSource('picker');
+      setMentionQuery('');
+      setPickerSearch('');
+      setHighlightedIndex(0);
+      setShowMenu(true);
+      onMentionOpen?.();
+    } else {
+      closeMenu();
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        measureMultiline();
+        if (draft.openPicker) return;
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        placeCaretAtRootEnd(el);
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // Применяем только по смене key, чтобы повторный клик по тому же чипу сработал.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
 
   /** Удаляет @query / live-mention из editable, оставляя каретку на месте. */
   const clearMentionFromEditable = useCallback(() => {
@@ -894,9 +1211,27 @@ function ChatInput({
   const detectAndOpenMention = useCallback((): boolean => {
     const root = inputRef.current;
     if (!root) return false;
-    const { text, node, offset } = getTextBeforeCaret(root);
-    const match = text.match(/(?:^|\s)@([^\s@]*)$/);
-    if (!match || !node) return false;
+    let { text, node, offset } = getTextBeforeCaret(root);
+    let match = text.match(/(?:^|\s)@([^\s@]*)$/);
+
+    // После blur Chrome часто ставит каретку на сам div или в начало поля —
+    // тогда смотрим, не заканчивается ли текст незакрытым "@query".
+    if (!match || !node) {
+      const sel = window.getSelection();
+      const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
+      const caretInMiddleOfText =
+        !!range &&
+        range.startContainer.nodeType === Node.TEXT_NODE &&
+        range.startOffset > 0 &&
+        range.startOffset < (range.startContainer as Text).length;
+      if (caretInMiddleOfText) return false;
+
+      const trailing = findTrailingMentionCaret(root);
+      if (!trailing) return false;
+      ({ text, node, offset } = trailing);
+      match = text.match(/(?:^|\s)@([^\s@]*)$/);
+      if (!match || !node) return false;
+    }
 
     const query = match[1];
     const start = offset - query.length - 1;
@@ -923,6 +1258,8 @@ function ChatInput({
       mentionRef.current = { mode: 'range', node, start, end: offset };
     }
 
+    setMenuSource('mention');
+    setPickerSearch('');
     setMentionQuery(query);
     setHighlightedIndex(0);
     setShowMenu(true);
@@ -996,14 +1333,11 @@ function ChatInput({
   const openBoundModelMenu = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       if (!boundModel) return;
-      mentionRef.current = { mode: 'bound' };
-      setMentionQuery('');
-      setHighlightedIndex(Math.max(0, getFullFlatIndex('model', boundModel.id, aiModels, teamMembers)));
-      setShowMenu(true);
-      onMentionOpen?.();
+      openPicker(boundModel.id);
     },
-    [boundModel, aiModels, teamMembers, onMentionOpen],
+    [boundModel, openPicker],
   );
 
   const handleRootClick = useCallback(
@@ -1039,6 +1373,7 @@ function ChatInput({
       const kind = badgeEl.dataset.token as 'model' | 'member';
       const id = badgeEl.dataset.id || '';
       mentionRef.current = { mode: 'token', tokenEl: badgeEl };
+      setMenuSource('mention');
       setMentionQuery('');
       setHighlightedIndex(Math.max(0, getFullFlatIndex(kind, id, aiModels, teamMembers)));
       setShowMenu(true);
@@ -1169,6 +1504,31 @@ function ChatInput({
     }
   }, [onSend, modelTokenNames, memberTokenNames, closeMenu, animateBoxHeight, isSending]);
 
+  const handleMenuKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!showMenu) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightedIndex((i) => Math.min(i + 1, Math.max(flat.length - 1, 0)));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightedIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const item = flat[highlightedIndex];
+        if (item) insertOrReplaceToken(item);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        const root = inputRef.current;
+        if (root && mentionRef.current.mode === 'range') unwrapMentionLiveNode(root);
+        setMentionActive(false);
+        closeMenu();
+        inputRef.current?.focus();
+      }
+    },
+    [showMenu, flat, highlightedIndex, insertOrReplaceToken, closeMenu],
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key === 'Backspace') {
@@ -1177,23 +1537,7 @@ function ChatInput({
       }
 
       if (showMenu) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setHighlightedIndex((i) => Math.min(i + 1, Math.max(flat.length - 1, 0)));
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setHighlightedIndex((i) => Math.max(i - 1, 0));
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          const item = flat[highlightedIndex];
-          if (item) insertOrReplaceToken(item);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          const root = inputRef.current;
-          if (root && mentionRef.current.mode === 'range') unwrapMentionLiveNode(root);
-          setMentionActive(false);
-          closeMenu();
-        }
+        handleMenuKeyDown(e);
         return;
       }
 
@@ -1202,18 +1546,36 @@ function ChatInput({
         if (!isEmpty && !isSending) void handleSend();
       }
     },
-    [showMenu, flat, highlightedIndex, insertOrReplaceToken, closeMenu, handleBackspace, isEmpty, isSending, handleSend]
+    [showMenu, handleMenuKeyDown, handleBackspace, isEmpty, isSending, handleSend]
   );
 
+  const cancelFocusDetect = useCallback(() => {
+    if (focusDetectRafRef.current != null) {
+      window.cancelAnimationFrame(focusDetectRafRef.current);
+      focusDetectRafRef.current = null;
+    }
+  }, []);
+
   const handleFocus = useCallback(() => {
-    // Даём браузеру завершить установку каретки перед проверкой её позиции
-    setTimeout(() => {
-      detectAndOpenMention();
-    }, 0);
-  }, [detectAndOpenMention]);
+    cancelBlurClose();
+    cancelFocusDetect();
+    // Два кадра: после blur Chrome доставляет каретку не в том же тике, что focus.
+    focusDetectRafRef.current = window.requestAnimationFrame(() => {
+      focusDetectRafRef.current = window.requestAnimationFrame(() => {
+        focusDetectRafRef.current = null;
+        detectAndOpenMention();
+      });
+    });
+  }, [cancelBlurClose, cancelFocusDetect, detectAndOpenMention]);
 
   const handleBlur = useCallback(() => {
-    setTimeout(() => {
+    cancelBlurClose();
+    cancelFocusDetect();
+    blurTimerRef.current = window.setTimeout(() => {
+      const active = document.activeElement;
+      if (menuRef.current?.contains(active)) return;
+      if (inputRef.current?.contains(active)) return;
+      if (boxRef.current?.contains(active)) return;
       const root = inputRef.current;
       if (root && mentionRef.current.mode === 'range') unwrapMentionLiveNode(root);
       setMentionActive(false);
@@ -1221,7 +1583,7 @@ function ChatInput({
       syncFromDom();
       measureMultiline();
     }, 120);
-  }, [closeMenu, syncFromDom, measureMultiline]);
+  }, [cancelBlurClose, cancelFocusDetect, closeMenu, syncFromDom, measureMultiline]);
 
   // ── Логика текста кнопки отправки по количеству ИИ-тегов в инпуте ──────────
   const sendConfig: SendConfig = useMemo(() => {
@@ -1265,7 +1627,7 @@ function ChatInput({
   );
 
   return (
-    <div className="cip-root">
+    <div className={skipEnter ? 'cip-root cip-no-enter' : 'cip-root'}>
       <style>{CHAT_INPUT_STYLES}</style>
 
       {showMenu && (
@@ -1274,8 +1636,20 @@ function ChatInput({
           members={members}
           flat={flat}
           highlightedIndex={highlightedIndex}
+          placement={menuPlacement}
+          style={menuStyle}
+          showSearch={menuSource === 'picker'}
+          searchValue={pickerSearch}
+          searchRef={searchRef}
+          menuRef={menuRef}
+          onSearchChange={(value) => {
+            setPickerSearch(value);
+            setHighlightedIndex(0);
+          }}
           onHover={setHighlightedIndex}
           onSelect={insertOrReplaceToken}
+          onFocusInside={cancelBlurClose}
+          onMenuKeyDown={handleMenuKeyDown}
         />
       )}
 
@@ -1299,6 +1673,7 @@ function ChatInput({
               <button
                 type="button"
                 className="cip-bound-tag-name"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={openBoundModelMenu}
                 aria-label={`Модель ${boundModel.name}. Нажмите, чтобы сменить`}
                 style={{

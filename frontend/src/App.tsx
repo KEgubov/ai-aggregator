@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import AuthForm from './components/AuthForm';
-import ChatHome from './components/ChatHome';
+import ChatHome, { type ChatCreatedOptions } from './components/ChatHome';
 import ChatView from './components/ChatView';
 import InviteDialog from './components/InviteDialog';
 import ProfileModal from './components/ProfileModal';
 import Sidebar from './components/Sidebar';
 import { fetchProfile, logoutUser } from './api/auth';
-import { createChat, fetchChats, fetchInvitePreview, joinChat } from './api/chat';
+import { fetchChats, fetchInvitePreview, joinChat } from './api/chat';
 import { ApiError } from './api/client';
 import type { Chat, InvitePreview } from './types/chat';
 import { initialsFromName } from './types/user';
@@ -20,6 +20,8 @@ const DEFAULT_INITIALS = 'Я';
 const DEFAULT_LABEL = 'Пользователь';
 const DESKTOP_MQ = '(min-width: 768px)';
 const AUTH_ENTER_CLASS = 'vt-auth-enter';
+const HOME_ENTER_CLASS = 'vt-to-home';
+const CHAT_ENTER_CLASS = 'vt-to-chat';
 
 function isDesktopViewport(): boolean {
   return typeof window !== 'undefined' && window.matchMedia(DESKTOP_MQ).matches;
@@ -50,10 +52,10 @@ export default function App() {
   const [userInitials, setUserInitials] = useState(DEFAULT_INITIALS);
   const [userLabel, setUserLabel] = useState(DEFAULT_LABEL);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(() => isDesktopViewport());
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [pendingInviteHint, setPendingInviteHint] = useState<string | null>(null);
   const [shellEnter, setShellEnter] = useState(false);
   const [pendingInviteToken, setPendingInviteToken] = useState<string | null>(null);
   const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
@@ -132,11 +134,15 @@ export default function App() {
           if (prev.some((c) => c.chat_id === chat.chat_id)) return prev;
           return [chat, ...prev];
         });
-        startViewTransition(() => {
-          setActiveChat(chat);
-          setView('conversation');
-          closeSidebarOnMobile();
-        });
+        startViewTransition(
+          () => {
+            setActiveChat(chat);
+            setView('conversation');
+            closeSidebarOnMobile();
+            setPendingInviteHint(null);
+          },
+          { className: CHAT_ENTER_CLASS },
+        );
       } catch (err) {
         clearPendingInvite();
         setJoinError(err instanceof Error ? err.message : 'Не удалось присоединиться к чату');
@@ -183,7 +189,7 @@ export default function App() {
   useEffect(() => {
     const mq = window.matchMedia(DESKTOP_MQ);
     const onChange = (event: MediaQueryListEvent) => {
-      setSidebarOpen(event.matches);
+      if (!event.matches) setSidebarOpen(false);
     };
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
@@ -200,7 +206,7 @@ export default function App() {
   const handleAuthSuccess = useCallback(async () => {
     sessionStorage.removeItem(LOGOUT_FLAG);
     await Promise.all([loadChats(), loadProfile()]);
-    setSidebarOpen(isDesktopViewport());
+    setSidebarOpen(false);
 
     revealApp(() => setView('chats'));
 
@@ -228,30 +234,41 @@ export default function App() {
     setInvitePreview(null);
     setInviteDialogOpen(false);
     setIsJoining(false);
+    setPendingInviteHint(null);
     setView('auth');
   }, []);
 
   const handleSelectChat = useCallback(
     (chat: Chat) => {
-      startViewTransition(() => {
-        setActiveChat(chat);
-        setView('conversation');
-        closeSidebarOnMobile();
-      });
+      const fromHome = view === 'chats' && !activeChat;
+      startViewTransition(
+        () => {
+          setActiveChat(chat);
+          setView('conversation');
+          closeSidebarOnMobile();
+          setPendingInviteHint(null);
+        },
+        fromHome ? { className: CHAT_ENTER_CLASS } : undefined,
+      );
     },
-    [closeSidebarOnMobile],
+    [activeChat, closeSidebarOnMobile, view],
   );
 
   const handleChatCreated = useCallback(
-    (chat: Chat) => {
-      startViewTransition(() => {
-        setChats((prev) => [chat, ...prev]);
-        setActiveChat(chat);
-        setView('conversation');
-        closeSidebarOnMobile();
-      });
+    (chat: Chat, options?: ChatCreatedOptions) => {
+      const fromHome = view === 'chats' && !activeChat;
+      startViewTransition(
+        () => {
+          setChats((prev) => [chat, ...prev]);
+          setActiveChat(chat);
+          setView('conversation');
+          closeSidebarOnMobile();
+          setPendingInviteHint(options?.inviteHint ?? null);
+        },
+        fromHome ? { className: CHAT_ENTER_CLASS } : undefined,
+      );
     },
-    [closeSidebarOnMobile],
+    [activeChat, closeSidebarOnMobile, view],
   );
 
   const handleChatDeleted = useCallback(
@@ -264,7 +281,7 @@ export default function App() {
           setView('chats');
         }
       };
-      if (wasActive) startViewTransition(update);
+      if (wasActive) startViewTransition(update, { className: HOME_ENTER_CLASS });
       else update();
     },
     [activeChat?.chat_id],
@@ -277,28 +294,26 @@ export default function App() {
     setActiveChat((prev) => (prev?.chat_id === chat.chat_id ? chat : prev));
   }, []);
 
+  const handleGoHome = useCallback(() => {
+    if (view === 'chats' && !activeChat) {
+      closeSidebarOnMobile();
+      return;
+    }
+    startViewTransition(
+      () => {
+        setActiveChat(null);
+        setView('chats');
+        closeSidebarOnMobile();
+        setPendingInviteHint(null);
+      },
+      { className: HOME_ENTER_CLASS },
+    );
+  }, [activeChat, closeSidebarOnMobile, view]);
+
   const handleOpenProfile = useCallback(() => {
     setProfileOpen(true);
     closeSidebarOnMobile();
   }, [closeSidebarOnMobile]);
-
-  const handleStartNewChat = useCallback(async () => {
-    if (isCreatingChat) return;
-    setIsCreatingChat(true);
-    setJoinError(null);
-    try {
-      const chat = await createChat();
-      handleChatCreated(chat);
-    } catch (err) {
-      setJoinError(err instanceof Error ? err.message : 'Не удалось создать чат');
-    } finally {
-      setIsCreatingChat(false);
-    }
-  }, [handleChatCreated, isCreatingChat]);
-
-  const handleToggleSidebar = useCallback(() => {
-    setSidebarOpen((open) => !open);
-  }, []);
 
   if (view === 'loading') {
     return (
@@ -348,6 +363,8 @@ export default function App() {
         userLabel={userLabel}
         profileActive={profileOpen}
         onClose={() => setSidebarOpen(false)}
+        onOpen={() => setSidebarOpen(true)}
+        onGoHome={handleGoHome}
         onSelectChat={handleSelectChat}
         onChatCreated={handleChatCreated}
         onChatDeleted={handleChatDeleted}
@@ -382,14 +399,20 @@ export default function App() {
               currentUserId={currentUserId}
               userInitials={userInitials}
               userLabel={userLabel}
-              onToggleSidebar={handleToggleSidebar}
+              initialInviteHint={pendingInviteHint}
+              sidebarOpen={sidebarOpen}
+              onToggleSidebar={() => setSidebarOpen(true)}
               onChatRenamed={handleChatRenamed}
             />
           ) : (
             <ChatHome
-              onStartNewChat={() => void handleStartNewChat()}
-              isCreating={isCreatingChat}
-              onToggleSidebar={handleToggleSidebar}
+              userLabel={userLabel}
+              chats={chats}
+              isLoadingChats={isLoadingChats}
+              sidebarOpen={sidebarOpen}
+              onToggleSidebar={() => setSidebarOpen(true)}
+              onSelectChat={handleSelectChat}
+              onChatCreated={handleChatCreated}
             />
           )}
         </div>

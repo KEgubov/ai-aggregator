@@ -17,7 +17,7 @@ export default function SidebarToggle({ onClick, label = 'Открыть мен�
     <button
       type="button"
       onClick={onClick}
-      className="shrink-0 p-2 rounded-lg transition-colors"
+      className="sidebar-toggle shrink-0 p-2 rounded-lg transition-colors"
       style={{ color: COLORS.muted }}
       aria-label={label}
       onMouseEnter={(e) => {
