@@ -161,6 +161,74 @@ body {
   view-transition-name: chat-main;
 }
 
+/* Chat thread: messages scroll under the composer; both share one column. */
+.chat-stage {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.chat-scroll,
+.chat-dock {
+  grid-column: 1;
+  grid-row: 1;
+  scrollbar-gutter: stable;
+}
+.chat-scroll {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.chat-dock {
+  align-self: end;
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+}
+.chat-veil {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7rem;
+  pointer-events: none;
+  background: linear-gradient(to top, #000 32%, transparent);
+}
+.chat-col {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+  min-width: 0;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 640px) {
+  .chat-col {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+.chat-col-messages {
+  padding-top: 1.25rem;
+}
+.chat-col-dock {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  padding-left: 1rem;
+  padding-right: 1.6rem;
+}
+.thread-composer-status {
+  text-align: center;
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;

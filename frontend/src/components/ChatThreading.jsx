@@ -962,7 +962,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="w-full">
       <style>{GENERATING_DOT_STYLES}</style>
 
       {messages.length === 0 && (

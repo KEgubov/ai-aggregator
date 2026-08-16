@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Brain, Gem, Link2, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 import ChatInput from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
@@ -95,7 +95,9 @@ export default function ChatView({
   const [inviteHint, setInviteHint] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
 
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const threadScrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const [composerPad, setComposerPad] = useState(96);
   const inviteHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modelsLoadedRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
@@ -184,9 +186,31 @@ export default function ChatView({
     })();
   }, [chat.chat_id, currentUserId]);
 
+  useLayoutEffect(() => {
+    const dock = composerRef.current;
+    if (!dock) return;
+
+    const update = () => {
+      setComposerPad(Math.ceil(dock.getBoundingClientRect().height) + 12);
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(dock);
+    const pill = dock.querySelector('.cip-box') ?? dock.querySelector('.cip-root');
+    if (pill) ro.observe(pill);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [displayMessages]);
+    const el = threadScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [displayMessages, composerPad]);
 
   useEffect(() => {
     return () => {
@@ -366,32 +390,42 @@ export default function ChatView({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {(messagesError || isLoadingMessages) && (
-          <p className="text-center text-xs mb-3" style={{ color: messagesError ? '#f87171' : COLORS.muted }}>
-            {messagesError ?? 'Загрузка сообщений…'}
-          </p>
-        )}
-        <ChatThreading messages={displayMessages} userInitials={userInitials} />
-        <div ref={bottomRef} aria-hidden="true" className="h-px" />
-      </div>
+      <div className="chat-stage">
+        <div
+          ref={threadScrollRef}
+          className="chat-scroll"
+          style={{ paddingBottom: composerPad }}
+        >
+          <div className="chat-col chat-col-messages">
+            {(messagesError || isLoadingMessages) && (
+              <p className="text-center text-xs mb-3" style={{ color: messagesError ? '#f87171' : COLORS.muted }}>
+                {messagesError ?? 'Загрузка сообщений…'}
+              </p>
+            )}
+            <ChatThreading messages={displayMessages} userInitials={userInitials} />
+          </div>
+        </div>
 
-      <div
-        className="shrink-0 px-4 sm:px-6 pt-2"
-        style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))' }}
-      >
-        {(modelsError || isLoadingModels) && (
-          <p className="text-center text-xs mb-3" style={{ color: modelsError ? '#f87171' : COLORS.muted }}>
-            {modelsError ?? 'Загрузка моделей…'}
-          </p>
-        )}
-        <ChatInput
-          aiModels={inputModels}
-          isSending={isSending}
-          onMentionOpen={handleMentionOpen}
-          onSend={handleSend}
-          placeholder="Напишите сообщение или введите @ для выбора модели…"
-        />
+        <div ref={composerRef} className="chat-dock">
+          <div aria-hidden="true" className="chat-veil" />
+          <div className="chat-col chat-col-dock">
+            {(modelsError || isLoadingModels) && (
+              <p
+                className="thread-composer-status"
+                style={{ color: modelsError ? '#f87171' : COLORS.muted }}
+              >
+                {modelsError ?? 'Загрузка моделей…'}
+              </p>
+            )}
+            <ChatInput
+              aiModels={inputModels}
+              isSending={isSending}
+              onMentionOpen={handleMentionOpen}
+              onSend={handleSend}
+              placeholder="Напишите сообщение или введите @ для выбора модели…"
+            />
+          </div>
+        </div>
       </div>
 
       <ChatInfoModal

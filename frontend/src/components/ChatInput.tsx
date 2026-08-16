@@ -19,32 +19,44 @@ const CHAT_INPUT_STYLES = `
 .cip-root {
   position: relative;
   width: 100%;
-  max-width: 36rem;
+  max-width: 100%;
+  min-width: 0;
   margin: 0 auto;
+  overflow: visible;
+  background: transparent;
   animation: cip-rise-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 .cip-box {
   position: relative;
-  background: #2D2D2D;
-  border: 1px solid #424242;
-  border-radius: 24px;
-  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 52px;
+  min-width: 0;
+  width: 100%;
+  background: #212121;
+  border: none;
+  border-radius: 28px;
+  padding: 8px;
   overflow: hidden;
+  box-shadow: inset 0 0 1px rgba(255, 255, 255, 0.2);
   transition:
-    border-color 180ms cubic-bezier(0.32, 0.72, 0, 1),
     box-shadow 180ms cubic-bezier(0.32, 0.72, 0, 1),
     background-color 180ms ease;
 }
 .cip-box.cip-animating-height {
-  /* Пока анимируем высоту — не даём контенту вылезать за рамку */
   overflow: hidden;
 }
-.cip-box.cip-row { min-height: 48px; display: flex; align-items: center; gap: 8px; }
-.cip-box.cip-col { display: flex; flex-direction: column; gap: 6px; min-height: 48px; }
 .cip-box:focus-within {
-  border-color: #5a5a5a;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.22), 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.cip-main-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 36px;
 }
 
 .cip-icon-btn {
@@ -54,7 +66,7 @@ const CHAT_INPUT_STYLES = `
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: #2D2D2D;
+  background: transparent;
   border: none;
   color: #C7C7C7;
   cursor: pointer;
@@ -65,25 +77,15 @@ const CHAT_INPUT_STYLES = `
     opacity .15s ease;
   padding: 0;
 }
-.cip-icon-btn:hover { background: #424242; }
+.cip-icon-btn:hover { background: rgba(255, 255, 255, 0.1); color: #EDEDED; }
 .cip-icon-btn:active { transform: scale(0.94); }
 
 .cip-send-cluster {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   flex-shrink: 0;
   animation: cip-fade-scale-in 180ms cubic-bezier(0.32, 0.72, 0, 1) both;
-}
-.cip-separator-dot { width: 4px; height: 4px; border-radius: 999px; background: #2D2D2D; flex-shrink: 0; }
-.cip-send-label {
-  font-size: 14px;
-  color: #C7C7C7;
-  white-space: nowrap;
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color .15s ease;
 }
 .cip-send-btn {
   background: #F5A623;
@@ -98,17 +100,7 @@ const CHAT_INPUT_STYLES = `
 .cip-send-btn:disabled { opacity: 0.55; cursor: default; }
 
 @media (max-width: 480px) {
-  .cip-send-label,
-  .cip-separator-dot { display: none; }
   .cip-menu { max-width: 100%; }
-}
-
-.cip-controls-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  animation: cip-fade-in 160ms ease both;
 }
 
 /* Привязанная модель — над полем ввода, живёт между отправками */
@@ -165,7 +157,7 @@ const CHAT_INPUT_STYLES = `
 .cip-editable, .cip-placeholder { grid-area: 1 / 1; }
 .cip-editable {
   outline: none;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 24px;
   color: #EDEDED;
   white-space: pre-wrap;
@@ -174,7 +166,7 @@ const CHAT_INPUT_STYLES = `
   max-height: 160px;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 6px 2px;
+  padding: 6px 4px;
   min-width: 0;
   /* Браузер не должен тащить жёлтый цвет тега в обычный набор */
   -webkit-text-fill-color: #EDEDED;
@@ -191,33 +183,14 @@ const CHAT_INPUT_STYLES = `
 .cip-placeholder {
   pointer-events: none;
   align-self: start;
-  color: #949494;
-  font-size: 15px;
+  color: #8e8e8e;
+  font-size: 16px;
   line-height: 24px;
-  padding: 6px 2px;
+  padding: 6px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: opacity .15s ease, color .15s ease;
-}
-
-/* Скрытый клон-измеритель: та же ширина, что и текстовая колонка в РАЗВЁРНУТОМ
-   (col) режиме, ПОСТОЯННАЯ независимо от текущего визуального режима. Именно
-   разная ширина при измерении в предыдущей версии вызывала дрожание переноса. */
-.cip-measure {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  top: 0;
-  visibility: hidden;
-  height: 0;
-  overflow: hidden;
-  font-size: 15px;
-  line-height: 24px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 6px 2px;
-  pointer-events: none;
 }
 
 /* Меню подсказок (@) — один контейнер, один общий скролл */
@@ -371,7 +344,6 @@ const CHAT_INPUT_STYLES = `
   .cip-menu,
   .cip-bound-row,
   .cip-send-cluster,
-  .cip-controls-row,
   .cip-token {
     animation: none !important;
     opacity: 1 !important;
@@ -380,7 +352,6 @@ const CHAT_INPUT_STYLES = `
   .cip-box,
   .cip-icon-btn,
   .cip-send-btn,
-  .cip-send-label,
   .cip-placeholder,
   .cip-menu-row,
   .cip-bound-tag {
@@ -764,14 +735,12 @@ function ChatInput({
 }: ChatInputProps) {
   const inputRef = useRef<HTMLDivElement>(null);
   const sendLockRef = useRef(false);
-  const measureRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const boxHeightRef = useRef<number | null>(null);
   const heightAnimGenRef = useRef(0);
   const mentionRef = useRef<MentionAnchor>({ mode: 'none' });
 
   const [isEmpty, setIsEmpty] = useState(true);
-  const [isMultiline, setIsMultiline] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -857,18 +826,7 @@ function ChatInput({
     el.addEventListener('transitionend', onEnd);
   }, []);
 
-  // Развёрнутая (col) раскладка: при любом контенте — иначе боковые кнопки в row
-  // сжимают поле, текст переносится, а фиксированная высота даёт вылет наружу.
-  // Дополнительно смотрим скрытый клон на случай, если контент выше одной строки
-  // уже на полной ширине (токен + текст).
   const measureMultiline = useCallback(() => {
-    const editable = inputRef.current;
-    const measure = measureRef.current;
-    if (!editable || !measure) return;
-    measure.innerHTML = editable.innerHTML;
-    const hasContent = !isRootEmpty(editable);
-    const wrapsAtFullWidth = measure.scrollHeight > 44;
-    setIsMultiline(hasContent || wrapsAtFullWidth);
     requestAnimationFrame(() => {
       animateBoxHeight();
     });
@@ -1199,7 +1157,6 @@ function ChatInput({
       if (!inputRef.current) return;
       inputRef.current.innerHTML = '';
       setIsEmpty(true);
-      setIsMultiline(false);
       setMemberTokenNames([]);
       setMentionActive(false);
       closeMenu();
@@ -1275,12 +1232,10 @@ function ChatInput({
 
   const hasBoundModel = boundModel !== null;
   const showSendCluster = (!isEmpty || hasBoundModel) && !showMenu;
-  // Привязанная модель всегда держит col-раскладку (тег сверху, как на макете)
-  const expanded = isMultiline || !isEmpty || hasBoundModel;
 
   useLayoutEffect(() => {
     animateBoxHeight();
-  }, [expanded, hasBoundModel, animateBoxHeight]);
+  }, [hasBoundModel, showSendCluster, animateBoxHeight]);
 
   const effectivePlaceholder = hasBoundModel
     ? `Ask ${boundModel.name}`
@@ -1291,8 +1246,6 @@ function ChatInput({
       <button type="button" aria-label="Голосовой ввод" className="cip-icon-btn">
         <Mic size={18} />
       </button>
-      <span className="cip-separator-dot" />
-      <span className="cip-send-label">{sendConfig.label}</span>
       <button
         type="button"
         onClick={() => void handleSend()}
@@ -1326,10 +1279,7 @@ function ChatInput({
         />
       )}
 
-      <div
-        ref={boxRef}
-        className={`cip-box ${expanded ? 'cip-col' : 'cip-row'}`}
-      >
+      <div ref={boxRef} className="cip-box">
         {hasBoundModel && (
           <div className="cip-bound-row">
             <div className="cip-bound-tag">
@@ -1367,47 +1317,35 @@ function ChatInput({
           </div>
         )}
 
-        {!expanded && (
+        <div className="cip-main-row">
           <button type="button" aria-label="Добавить вложение" className="cip-icon-btn">
             <Plus size={18} />
           </button>
-        )}
 
-        <div className="cip-editable-wrap">
-          <div
-            ref={inputRef}
-            contentEditable
-            suppressContentEditableWarning
-            role="textbox"
-            aria-multiline="true"
-            aria-label="Сообщение"
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="off"
-            onInput={handleInput}
-            onKeyDown={handleKeyDown}
-            onClick={handleRootClick}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            style={{ caretColor: mentionActive ? '#FFBC50' : '#EDEDED' }}
-            className="cip-editable"
-          />
-          {isEmpty && <span className="cip-placeholder">{effectivePlaceholder}</span>}
-        </div>
-
-        {!expanded && rightControls}
-
-        {expanded && (
-          <div className="cip-controls-row">
-            <button type="button" aria-label="Добавить вложение" className="cip-icon-btn">
-              <Plus size={18} />
-            </button>
-            {rightControls}
+          <div className="cip-editable-wrap">
+            <div
+              ref={inputRef}
+              contentEditable
+              suppressContentEditableWarning
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Сообщение"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              onInput={handleInput}
+              onKeyDown={handleKeyDown}
+              onClick={handleRootClick}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              style={{ caretColor: mentionActive ? '#FFBC50' : '#EDEDED' }}
+              className="cip-editable"
+            />
+            {isEmpty && <span className="cip-placeholder">{effectivePlaceholder}</span>}
           </div>
-        )}
 
-        {/* Скрытый клон для устойчивого (без дрожания) измерения переноса строк */}
-        <div ref={measureRef} className="cip-measure" aria-hidden="true" />
+          {rightControls}
+        </div>
       </div>
     </div>
   );
