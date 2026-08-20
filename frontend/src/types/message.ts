@@ -110,7 +110,7 @@ export function stripMentionTokens(
     const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     result = result.replace(new RegExp(escaped, 'gi'), '');
   }
-  return result.replace(/\s+/g, ' ').trim();
+  return result.replace(/[ \t]+$/gm, '').trim();
 }
 
 export function splitIntoParagraphs(text: string): { id: string; text: string }[] {

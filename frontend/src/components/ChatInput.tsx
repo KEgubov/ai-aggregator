@@ -169,6 +169,7 @@ const CHAT_INPUT_STYLES = `
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+  tab-size: 4;
   max-height: 160px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -565,19 +566,29 @@ function isRootEmpty(root: HTMLElement): boolean {
 
 /** Текст сообщения без UI-элементов тегов (@модель): иконка ✕ и имя тега не попадают в payload. */
 function extractEditableText(root: HTMLElement): string {
+  const BLOCK_TAGS = new Set(['DIV', 'P', 'LI']);
   let text = '';
+
   const walk = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      text += node.textContent ?? '';
+      text += (node.textContent ?? '').replace(/\u00A0/g, ' ');
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as HTMLElement;
     if (el.dataset.token) return;
+    if (el.tagName === 'BR') {
+      text += '\n';
+      return;
+    }
+    if (BLOCK_TAGS.has(el.tagName) && text.length > 0 && !text.endsWith('\n')) {
+      text += '\n';
+    }
     for (const child of el.childNodes) walk(child);
   };
+
   for (const child of root.childNodes) walk(child);
-  return text;
+  return text.replace(/^\n+|\n+$/g, '');
 }
 
 /** Снимает жёлтую "живую" подсветку "@query" и возвращает НОВЫЙ текстовый узел (без обращения к Selection). */
@@ -1541,12 +1552,20 @@ function ChatInput({
         return;
       }
 
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        document.execCommand('insertText', false, '    ');
+        syncFromDom();
+        measureMultiline();
+        return;
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (!isEmpty && !isSending) void handleSend();
       }
     },
-    [showMenu, handleMenuKeyDown, handleBackspace, isEmpty, isSending, handleSend]
+    [showMenu, handleMenuKeyDown, handleBackspace, isEmpty, isSending, handleSend, syncFromDom, measureMultiline]
   );
 
   const cancelFocusDetect = useCallback(() => {

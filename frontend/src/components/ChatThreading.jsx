@@ -212,6 +212,8 @@ const MD_STYLES = `
   line-height: 1.55;
   color: #E5E5E5;
   background: transparent;
+  white-space: pre;
+  tab-size: 4;
 }
 .md-code-pre code {
   font-family: inherit;
@@ -280,26 +282,108 @@ const MD_STYLES = `
 }
 .md-table tr:last-child td { border-bottom: none; }
 .md-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+.msg-bubble-code {
+  padding: 8px 8px 8px 10px;
+}
+.msg-bubble-code .md-code-block {
+  margin: 0;
+}
+.msg-code-group + .msg-code-group,
+.msg-user-text + .msg-code-group,
+.msg-code-group + .msg-user-text {
+  margin-top: 8px;
+}
+.msg-user-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 `;
+
+function escapeHtml(code) {
+  return code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 function highlightCode(code, language) {
   try {
     if (language && hljs.getLanguage(language)) {
-      return hljs.highlight(code, { language }).value;
+      const result = hljs.highlight(code, { language });
+      return { html: result.value, language: result.language || language };
     }
-    return hljs.highlightAuto(code).value;
+    const result = hljs.highlightAuto(code);
+    return { html: result.value, language: result.language || '' };
   } catch {
-    return code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    return { html: escapeHtml(code), language: language || '' };
   }
+}
+
+function parseTelegramCodeParts(text) {
+  const src = String(text ?? '');
+  const parts = [];
+  let i = 0;
+
+  while (i < src.length) {
+    const start = src.indexOf('```', i);
+    if (start === -1) {
+      parts.push({ type: 'text', value: src.slice(i) });
+      break;
+    }
+    if (start > i) {
+      parts.push({ type: 'text', value: src.slice(i, start) });
+    }
+
+    const after = start + 3;
+    const close = src.indexOf('```', after);
+    if (close === -1) {
+      parts.push({ type: 'text', value: src.slice(start) });
+      break;
+    }
+
+    const inner = src.slice(after, close).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let language = '';
+    let code = inner;
+    const nl = inner.indexOf('\n');
+
+    if (nl !== -1) {
+      const firstLine = inner.slice(0, nl).trim();
+      if (firstLine && /^[\w+-]+$/.test(firstLine)) {
+        language = firstLine;
+        code = inner.slice(nl + 1).replace(/\n$/, '');
+      } else if (!firstLine) {
+        code = inner.slice(nl + 1).replace(/\n$/, '');
+      } else {
+        code = inner.replace(/^\n/, '').replace(/\n$/, '');
+      }
+    } else {
+      const trimmed = inner.trim();
+      const match = trimmed.match(/^([\w+-]+)\s+([\s\S]+)$/);
+      if (match && hljs.getLanguage(match[1])) {
+        language = match[1];
+        code = match[2];
+      } else {
+        code = trimmed;
+      }
+    }
+
+    parts.push({ type: 'code', language, code });
+    i = close + 3;
+  }
+
+  return parts.filter((part, idx) => {
+    if (part.type !== 'text') return true;
+    if (part.value.trim() !== '') return true;
+    return idx !== 0 && idx !== parts.length - 1;
+  });
 }
 
 function CodeBlock({ language, children }) {
   const [copied, setCopied] = useState(false);
   const code = String(children).replace(/\n$/, '');
   const highlighted = useMemo(() => highlightCode(code, language), [code, language]);
+  const lang = language || highlighted.language;
 
   async function handleCopy() {
     try {
@@ -314,7 +398,7 @@ function CodeBlock({ language, children }) {
   return (
     <div className="md-code-block">
       <div className="md-code-header">
-        <span className="md-code-lang">{language || 'code'}</span>
+        <span className="md-code-lang">{lang || 'code'}</span>
         <button type="button" className="md-code-copy" onClick={() => void handleCopy()}>
           {copied ? <Check size={13} /> : <Copy size={13} />}
           {copied ? 'Скопировано' : 'Копировать'}
@@ -322,8 +406,8 @@ function CodeBlock({ language, children }) {
       </div>
       <pre className="md-code-pre">
         <code
-          className={language ? `language-${language}` : undefined}
-          dangerouslySetInnerHTML={{ __html: highlighted }}
+          className={lang ? `language-${lang}` : undefined}
+          dangerouslySetInnerHTML={{ __html: highlighted.html }}
         />
       </pre>
     </div>
@@ -373,12 +457,53 @@ const markdownComponents = {
 function MarkdownText({ text }) {
   return (
     <div className="md-body">
-      <style>{MD_STYLES}</style>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {text}
       </ReactMarkdown>
     </div>
   );
+}
+
+function UserInlineText({ text }) {
+  const nodes = [];
+  const src = String(text ?? '');
+  const re = /`([^`]+)`/g;
+  let last = 0;
+  let match;
+  let key = 0;
+
+  while ((match = re.exec(src)) !== null) {
+    if (match.index > last) {
+      nodes.push(<span key={key}>{src.slice(last, match.index)}</span>);
+      key += 1;
+    }
+    nodes.push(
+      <code key={key} className="md-inline-code">
+        {match[1]}
+      </code>,
+    );
+    key += 1;
+    last = match.index + match[0].length;
+  }
+
+  if (last < src.length) {
+    nodes.push(<span key={key}>{src.slice(last)}</span>);
+  }
+
+  return <span className="msg-user-text">{nodes}</span>;
+}
+
+function UserRichText({ parts }) {
+  return parts.map((part, index) => {
+    if (part.type === 'code') {
+      return (
+        <div key={`code-${index}`} className="msg-code-group">
+          <CodeBlock language={part.language}>{part.code}</CodeBlock>
+        </div>
+      );
+    }
+    return <UserInlineText key={`text-${index}`} text={part.value} />;
+  });
 }
 
 function Avatar({ label, isAI, size = 'sm', accentColor }) {
@@ -814,6 +939,8 @@ function UserBubble({
   const nameColor = colorFromName(authorName || userInitials);
   const displayName = authorName || userInitials;
   const bubbleBg = isMe ? COLORS.myBubble : COLORS.otherBubble;
+  const parts = useMemo(() => parseTelegramCodeParts(text), [text]);
+  const hasCode = parts.some((part) => part.type === 'code');
 
   return (
     <div
@@ -838,9 +965,15 @@ function UserBubble({
         ) : (
           <div className="w-9 h-9 shrink-0" aria-hidden="true" />
         )}
-        <div className="msg-bubble-wrap min-w-0" style={{ maxWidth: 'min(75vw, 28rem)' }}>
+        <div
+          className="msg-bubble-wrap min-w-0"
+          style={{ maxWidth: hasCode ? 'min(88vw, 36rem)' : 'min(75vw, 28rem)' }}
+        >
           <div
-            className="msg-bubble px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+            className={[
+              'msg-bubble text-sm leading-relaxed break-words [overflow-wrap:anywhere]',
+              hasCode ? 'msg-bubble-code' : 'px-3.5 py-2 whitespace-pre-wrap',
+            ].join(' ')}
             style={{
               background: bubbleBg,
               color: '#d4d4d4',
@@ -856,7 +989,7 @@ function UserBubble({
                 {displayName}
               </p>
             ) : null}
-            {text}
+            <UserRichText parts={parts} />
           </div>
           {isLast ? <BubbleTail isMe={isMe} color={bubbleBg} /> : null}
         </div>
@@ -963,7 +1096,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
 
   return (
     <div className="w-full">
-      <style>{GENERATING_DOT_STYLES}</style>
+      <style>{`${MD_STYLES}${GENERATING_DOT_STYLES}`}</style>
 
       {messages.length === 0 && (
         <p className="text-center text-sm py-16" style={{ color: '#737373' }}>
