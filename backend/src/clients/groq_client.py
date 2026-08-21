@@ -16,14 +16,6 @@ class GroqClient:
         """Инициализирует AsyncGroq по ключу из настроек."""
         self.client = AsyncGroq(api_key=api_settings.GROQ_API, max_retries=3)
 
-    async def generate_response(self, model: str, prompt: str) -> str:
-        """Возвращает полный ответ модели на один user-prompt."""
-        response = await self.client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model,
-        )
-        return response.choices[0].message.content or ""
-
     async def stream_chat(
         self, model: str, messages: list[dict]
     ) -> AsyncIterator[str | tuple[str, dict[str, Any]]]:
@@ -75,6 +67,3 @@ class GroqClient:
             logger.exception("Непредвиденная ошибка в GroqClient: %s", e)
             yield "⚠ Произошла ошибка при обращении к Groq."
             yield ("usage", {})
-
-
-groq_client = GroqClient()

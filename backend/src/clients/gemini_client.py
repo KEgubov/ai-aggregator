@@ -79,19 +79,3 @@ class GeminiClient:
                 logger.exception("Непредвиденная ошибка в GeminiClient: %s", e)
                 yield "Произошла ошибка при обработке запроса."
                 return
-
-    async def generate_response(
-        self,
-        model: str,
-        prompt: str,
-        retries: int = 3,
-        delay: int = 2,
-    ) -> str | None:
-        """Собирает полный ответ модели из стрима (без стриминга наружу)."""
-        parts: list[str] = []
-        async for chunk in self.stream_response(
-            model=model, prompt=prompt, retries=retries, delay=delay
-        ):
-            if isinstance(chunk, str):
-                parts.append(chunk)
-        return "".join(parts) if parts else None
