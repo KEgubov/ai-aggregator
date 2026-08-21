@@ -13,6 +13,8 @@ export interface ChatStreamSnapshot {
   localUserId: string;
   localAssistantId: string | null;
   parentId: number | null;
+  contextAnchor: string | null;
+  contextTextSnippet: string | null;
 }
 
 export interface StartChatGenerationOptions {
@@ -21,6 +23,8 @@ export interface StartChatGenerationOptions {
   parentId?: number;
   modelId?: number;
   modelName?: string | null;
+  contextAnchor?: string;
+  contextTextSnippet?: string;
 }
 
 const snapshots = new Map<number, ChatStreamSnapshot>();
@@ -71,6 +75,8 @@ export function startChatGeneration(options: StartChatGenerationOptions): boolea
     localUserId,
     localAssistantId,
     parentId: options.parentId ?? null,
+    contextAnchor: options.contextAnchor ?? null,
+    contextTextSnippet: options.contextTextSnippet ?? null,
   });
   emit(options.chatId);
   void runGeneration(options);
@@ -106,6 +112,8 @@ export function messagesWithStream(
       type: 'user',
       text: stream.userText,
       isMe: true,
+      contextAnchor: stream.contextAnchor,
+      contextTextSnippet: stream.contextTextSnippet,
     });
   }
 
@@ -116,7 +124,6 @@ export function messagesWithStream(
       text: stream.error ? `⚠ ${stream.error}` : stream.assistantText,
       modelName: stream.modelName ?? undefined,
       isStreaming: stream.status === 'running',
-      parentId: stream.parentId,
     });
   }
 
@@ -151,23 +158,26 @@ function patch(chatId: number, partial: Partial<ChatStreamSnapshot>): void {
 }
 
 async function runGeneration(options: StartChatGenerationOptions): Promise<void> {
-  const { chatId, content, parentId, modelId } = options;
+  const { chatId, content, parentId, modelId, contextAnchor, contextTextSnippet } = options;
   try {
     if (modelId == null) {
-      await sendChatMessage({ chatId, content, parentId });
+      await sendChatMessage({ chatId, content, parentId, contextAnchor, contextTextSnippet });
       patch(chatId, { status: 'completed' });
       return;
     }
 
-    await streamMessage({ chatId, modelId, content, parentId }, (chunk) => {
-      const current = snapshots.get(chatId);
-      if (!current || current.status !== 'running') return;
-      snapshots.set(chatId, {
-        ...current,
-        assistantText: current.assistantText + chunk,
-      });
-      emit(chatId);
-    });
+    await streamMessage(
+      { chatId, modelId, content, parentId, contextAnchor, contextTextSnippet },
+      (chunk) => {
+        const current = snapshots.get(chatId);
+        if (!current || current.status !== 'running') return;
+        snapshots.set(chatId, {
+          ...current,
+          assistantText: current.assistantText + chunk,
+        });
+        emit(chatId);
+      },
+    );
 
     const current = snapshots.get(chatId);
     if (current?.status === 'running') {

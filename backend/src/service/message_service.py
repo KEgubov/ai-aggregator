@@ -137,5 +137,9 @@ class MessageService:
             if not row.content:
                 continue
             role = "user" if row.author_type == "user" else "assistant"
-            history.append({"role": role, "content": row.content})
+            content = row.content
+            snippet = (row.context_text_snippet or "").strip()
+            if role == "user" and snippet:
+                content = f"Цитата: «{snippet}»\n\n{row.content}"
+            history.append({"role": role, "content": content})
         return history

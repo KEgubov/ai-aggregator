@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Brain, Gem, Link2, Rocket, Satellite, Sparkles, Zap, type LucideIcon } from 'lucide-react';
-import ChatInput from './ChatInput';
+import ChatInput, { type ChatInputQuote, type ChatInputSendPayload } from './ChatInput';
 import ChatThreading from './ChatThreading.jsx';
 import ChatMembersAvatars from './ChatMembersAvatars';
 import ChatInfoModal from './ChatInfoModal';
@@ -96,6 +96,7 @@ export default function ChatView({
   const [inviteHint, setInviteHint] = useState<string | null>(initialInviteHint);
   const [inviteHintLeaving, setInviteHintLeaving] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [quote, setQuote] = useState<ChatInputQuote | null>(null);
 
   const threadScrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -127,6 +128,7 @@ export default function ChatView({
 
   useEffect(() => {
     setInfoOpen(false);
+    setQuote(null);
   }, [chat.chat_id]);
 
   const inputModels = useMemo(
@@ -307,7 +309,7 @@ export default function ChatView({
   }, [stream?.status, stream?.error, chat.chat_id]);
 
   const handleSend = useCallback(
-    async (payload: { text: string; modelTokens: string[]; memberTokens: string[] }): Promise<boolean> => {
+    async (payload: ChatInputSendPayload): Promise<boolean> => {
       const chatId = chat.chat_id;
       if (isChatStreaming(chatId)) return false;
 
@@ -318,7 +320,10 @@ export default function ChatView({
       );
       if (!text) return false;
 
-      const parentId = getLastServerMessageId(messagesRef.current);
+      const quotedId = Number(payload.contextAnchor);
+      const parentId = Number.isInteger(quotedId) && quotedId > 0
+        ? quotedId
+        : getLastServerMessageId(messagesRef.current);
       setMessagesError(null);
       setModelsError(null);
 
@@ -327,8 +332,19 @@ export default function ChatView({
         currentModels = await loadModels();
       }
 
+      const contextAnchor = payload.contextAnchor;
+      const contextTextSnippet = payload.contextTextSnippet;
+
       if (payload.modelTokens.length === 0) {
-        return startChatGeneration({ chatId, content: text, parentId });
+        const started = startChatGeneration({
+          chatId,
+          content: text,
+          parentId,
+          contextAnchor,
+          contextTextSnippet,
+        });
+        if (started) setQuote(null);
+        return started;
       }
 
       const targets = resolveTargetModels(currentModels, payload.modelTokens);
@@ -338,13 +354,17 @@ export default function ChatView({
       }
 
       const model = targets[0];
-      return startChatGeneration({
+      const started = startChatGeneration({
         chatId,
         content: text,
         parentId,
         modelId: model.model_id,
         modelName: model.display_name,
+        contextAnchor,
+        contextTextSnippet,
       });
+      if (started) setQuote(null);
+      return started;
     },
     [apiModels, chat.chat_id, loadModels],
   );
@@ -440,7 +460,11 @@ export default function ChatView({
                 {messagesError ?? 'Загрузка сообщений…'}
               </p>
             )}
-            <ChatThreading messages={displayMessages} userInitials={userInitials} />
+            <ChatThreading
+              messages={displayMessages}
+              userInitials={userInitials}
+              onAskSelection={setQuote}
+            />
           </div>
         </div>
 
@@ -459,6 +483,8 @@ export default function ChatView({
               aiModels={inputModels}
               isSending={isSending}
               menuPlacement="up"
+              quote={quote}
+              onClearQuote={() => setQuote(null)}
               onMentionOpen={handleMentionOpen}
               onSend={handleSend}
               placeholder="Напишите сообщение или введите @ для выбора модели…"

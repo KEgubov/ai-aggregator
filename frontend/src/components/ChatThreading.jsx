@@ -21,6 +21,7 @@ import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { Sparkles, CornerDownRight, MoreHorizontal, GitBranch, Check, Copy } from 'lucide-react';
 import { formatMessageDate } from '../types/message';
+import SelectionAskToolbar from './SelectionAskToolbar';
 
 hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('sh', bash);
@@ -1079,11 +1080,16 @@ function AIResponse({
 }
 
 /**
- * @param {{ messages: import('../types/message').Message[], userInitials?: string }} props
+ * @param {{
+ *   messages: import('../types/message').Message[],
+ *   userInitials?: string,
+ *   onAskSelection?: (quote: { text: string, messageId: string }) => void,
+ * }} props
  */
-export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
+export default function ChatThreading({ messages = [], userInitials = 'Я', onAskSelection }) {
   const [activeThread, setActiveThread] = useState(null);
   const [footerActive, setFooterActive] = useState({});
+  const rootRef = useRef(null);
 
   function onThreadOpen(paragraphId) {
     setActiveThread((prev) => (prev === paragraphId ? null : paragraphId));
@@ -1095,8 +1101,9 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
   }
 
   return (
-    <div className="w-full">
+    <div ref={rootRef} className="w-full">
       <style>{`${MD_STYLES}${GENERATING_DOT_STYLES}`}</style>
+      {onAskSelection ? <SelectionAskToolbar rootRef={rootRef} onAsk={onAskSelection} /> : null}
 
       {messages.length === 0 && (
         <p className="text-center text-sm py-16" style={{ color: '#737373' }}>
@@ -1116,7 +1123,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
           const isFirst = !groupedPrev;
           const isLast = !isSameUser(msg, next);
           return (
-            <div key={msg.id} style={{ marginTop }}>
+            <div key={msg.id} data-message-id={msg.id} style={{ marginTop }}>
               <UserBubble
                 text={msg.text}
                 isMe={mine}
@@ -1134,7 +1141,7 @@ export default function ChatThreading({ messages = [], userInitials = 'Я' }) {
 
         const parent = resolveReplyParent(messages, msg);
         return (
-          <div key={msg.id} style={{ marginTop }}>
+          <div key={msg.id} data-message-id={msg.id} style={{ marginTop }}>
             <AIResponse
               text={msg.text}
               modelName={msg.modelName}

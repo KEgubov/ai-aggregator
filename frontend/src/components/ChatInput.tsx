@@ -9,6 +9,8 @@ import {
   Bot,
   Search,
   Users,
+  CornerDownRight,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { isViewTransitioning } from '../utils/viewTransition';
@@ -158,6 +160,46 @@ const CHAT_INPUT_STYLES = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.cip-quote-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -8px -8px 6px;
+  padding: 10px 12px 10px 14px;
+  background: #2e2e2e;
+  min-width: 0;
+  animation: cip-bound-in 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.cip-quote-icon {
+  flex-shrink: 0;
+  color: #d4d4d4;
+}
+.cip-quote-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d4d4d4;
+  font-size: 14px;
+  line-height: 20px;
+}
+.cip-quote-clear {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #d4d4d4;
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+.cip-quote-clear:hover { background: rgba(255, 255, 255, 0.1); color: #ededed; }
 
 .cip-editable-wrap { position: relative; display: grid; flex: 1; min-width: 0; }
 .cip-editable, .cip-placeholder { grid-area: 1 / 1; }
@@ -387,6 +429,7 @@ const CHAT_INPUT_STYLES = `
   .cip-menu.cip-menu-up,
   .cip-menu.cip-menu-down,
   .cip-bound-row,
+  .cip-quote-row,
   .cip-send-cluster,
   .cip-token {
     animation: none !important;
@@ -898,10 +941,17 @@ function SuggestionMenu({
 // Основной компонент ChatInput
 // ────────────────────────────────────────────────────────────────────────────
 
+export type ChatInputQuote = {
+  text: string;
+  messageId?: string;
+};
+
 export type ChatInputSendPayload = {
   text: string;
   modelTokens: string[];
   memberTokens: string[];
+  contextAnchor?: string;
+  contextTextSnippet?: string;
 };
 
 /** Смена `key` применяет черновик, даже если текст и модель те же. */
@@ -920,6 +970,8 @@ export interface ChatInputProps {
   autoFocus?: boolean;
   draft?: ChatInputDraft | null;
   menuPlacement?: MenuPlacement;
+  quote?: ChatInputQuote | null;
+  onClearQuote?: () => void;
   onMentionOpen?: () => void;
   onMenuOpenChange?: (open: boolean) => void;
   onSend?: (payload: ChatInputSendPayload) => boolean | void | Promise<boolean | void>;
@@ -943,6 +995,8 @@ function ChatInput({
   autoFocus = false,
   draft = null,
   menuPlacement = 'up',
+  quote = null,
+  onClearQuote,
   onMentionOpen,
   onMenuOpenChange,
   onSend,
@@ -1495,8 +1549,15 @@ function ChatInput({
     const text = extractEditableText(root);
     sendLockRef.current = true;
     try {
+      const snippet = quote?.text?.replace(/\s+/g, ' ').trim();
       const accepted = await Promise.resolve(
-        onSend?.({ text, modelTokens: modelTokenNames, memberTokens: memberTokenNames }),
+        onSend?.({
+          text,
+          modelTokens: modelTokenNames,
+          memberTokens: memberTokenNames,
+          contextAnchor: quote?.messageId,
+          contextTextSnippet: snippet || undefined,
+        }),
       );
       if (accepted === false) return;
       // Текст очищаем только если отправка принята; привязанную модель оставляем.
@@ -1506,6 +1567,7 @@ function ChatInput({
       setMemberTokenNames([]);
       setMentionActive(false);
       closeMenu();
+      onClearQuote?.();
       inputRef.current.blur();
       requestAnimationFrame(() => {
         animateBoxHeight();
@@ -1513,7 +1575,7 @@ function ChatInput({
     } finally {
       sendLockRef.current = false;
     }
-  }, [onSend, modelTokenNames, memberTokenNames, closeMenu, animateBoxHeight, isSending]);
+  }, [onSend, onClearQuote, quote, modelTokenNames, memberTokenNames, closeMenu, animateBoxHeight, isSending]);
 
   const handleMenuKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -1612,11 +1674,18 @@ function ChatInput({
   }, [modelTokenNames]);
 
   const hasBoundModel = boundModel !== null;
+  const quotedText = quote?.text?.replace(/\s+/g, ' ').trim() ?? '';
+  const hasQuote = quotedText.length > 0;
   const showSendCluster = (!isEmpty || hasBoundModel) && !showMenu;
+
+  useEffect(() => {
+    if (!hasQuote) return;
+    inputRef.current?.focus();
+  }, [hasQuote, quote?.messageId, quotedText]);
 
   useLayoutEffect(() => {
     animateBoxHeight();
-  }, [hasBoundModel, showSendCluster, animateBoxHeight]);
+  }, [hasBoundModel, hasQuote, showSendCluster, animateBoxHeight]);
 
   const effectivePlaceholder = hasBoundModel
     ? `Ask ${boundModel.name}`
@@ -1673,6 +1742,22 @@ function ChatInput({
       )}
 
       <div ref={boxRef} className="cip-box">
+        {hasQuote && (
+          <div className="cip-quote-row">
+            <CornerDownRight size={16} className="cip-quote-icon" aria-hidden="true" />
+            <span className="cip-quote-text" title={quotedText}>
+              “{quotedText}”
+            </span>
+            <button
+              type="button"
+              className="cip-quote-clear"
+              aria-label="Убрать цитату"
+              onClick={onClearQuote}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {hasBoundModel && (
           <div className="cip-bound-row">
             <div className="cip-bound-tag">
