@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.api.dependency import get_current_user, get_chat_service, get_session
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(prefix="/chats", tags=["Chat"])
 
 
 @router.post("/create")

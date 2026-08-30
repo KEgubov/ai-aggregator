@@ -14,7 +14,7 @@ from backend.src.schemas.user_schema import UserAddDTO
 from backend.src.service.auth_service import AuthService
 from backend.src.service.user_service import UserService
 
-router = APIRouter(prefix="/user", tags=["User"])
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 @router.post("/register")

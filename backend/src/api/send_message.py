@@ -19,7 +19,7 @@ from backend.src.service.model_service import ModelService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/message", tags=["Message"])
+router = APIRouter(prefix="/messages", tags=["Message"])
 
 
 @router.post("/send", response_model=None)

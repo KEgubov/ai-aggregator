@@ -6,7 +6,7 @@ from backend.src.api.dependency import get_current_user, get_user_service, get_s
 from backend.src.schemas.custom import CurrentUserDTO
 from backend.src.service.user_service import UserService
 
-router = APIRouter(prefix="/user", tags=["User"])
+router = APIRouter(prefix="/users", tags=["User"])
 
 
 @router.get("/profile")
@@ -22,7 +22,7 @@ async def get_profile(
     return {"status": "ok", "profile": profile}
 
 
-@router.put("/profile/username/change")
+@router.patch("/profile/username")
 async def change_username(
     username: str,
     user_service: UserService = Depends(get_user_service),
