@@ -37,7 +37,7 @@ interface ChangeUsernameResponse {
 }
 
 export async function registerUser(payload: RegisterPayload): Promise<RegisterResponse['user']> {
-  const data = await apiFetch<RegisterResponse>('/user/register', {
+  const data = await apiFetch<RegisterResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -45,26 +45,26 @@ export async function registerUser(payload: RegisterPayload): Promise<RegisterRe
 }
 
 export async function loginUser(payload: LoginPayload): Promise<void> {
-  await apiFetch<LoginResponse>('/user/login', {
+  await apiFetch<LoginResponse>('/auth/login', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
 export async function logoutUser(): Promise<void> {
-  await apiFetch('/user/logout', { method: 'POST' });
+  await apiFetch('/auth/logout', { method: 'POST' });
 }
 
 export async function fetchProfile(): Promise<UserProfile> {
-  const data = await apiFetch<ProfileResponse>('/user/profile');
+  const data = await apiFetch<ProfileResponse>('/users/profile');
   return data.profile;
 }
 
 export async function changeUsername(username: string): Promise<string> {
   const params = new URLSearchParams({ username });
   const data = await apiFetch<ChangeUsernameResponse>(
-    `/user/profile/username/change?${params.toString()}`,
-    { method: 'PUT' },
+    `/users/profile/username?${params.toString()}`,
+    { method: 'PATCH' },
   );
   return data.change_name;
 }

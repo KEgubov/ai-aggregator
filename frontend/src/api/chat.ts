@@ -17,12 +17,12 @@ interface MembersResponse {
 }
 
 export async function fetchChats(): Promise<Chat[]> {
-  const data = await apiFetch<ChatsResponse>('/chat/all');
+  const data = await apiFetch<ChatsResponse>('/chats/all');
   return data.chats ?? [];
 }
 
 export async function createChat(): Promise<Chat> {
-  const data = await apiFetch<CreateChatResponse>('/chat/create', {
+  const data = await apiFetch<CreateChatResponse>('/chats/create', {
     method: 'POST',
   });
   return data.chat;
@@ -33,13 +33,13 @@ interface DeleteChatResponse {
 }
 
 export async function deleteChat(chatId: number): Promise<void> {
-  await apiFetch<DeleteChatResponse>(`/chat/${chatId}`, {
+  await apiFetch<DeleteChatResponse>(`/chats/${chatId}`, {
     method: 'DELETE',
   });
 }
 
 export async function fetchChatMembers(chatId: number): Promise<ChatMember[]> {
-  const data = await apiFetch<MembersResponse>(`/chat/members?chat_id=${chatId}`);
+  const data = await apiFetch<MembersResponse>(`/chats/members?chat_id=${chatId}`);
   return data.members ?? [];
 }
 
@@ -50,7 +50,7 @@ interface InviteResponse {
 
 /** Создаёт invite-токен для чата. Возвращает строку token. */
 export async function createChatInvite(chatId: number): Promise<string> {
-  const data = await apiFetch<InviteResponse>(`/chat/${chatId}/invite`, {
+  const data = await apiFetch<InviteResponse>(`/chats/${chatId}/invite`, {
     method: 'POST',
   });
   const raw = data.token;
@@ -66,7 +66,7 @@ interface JoinChatResponse {
 
 /** Присоединяется к чату по invite-токену. */
 export async function joinChat(token: string): Promise<Chat> {
-  const data = await apiFetch<JoinChatResponse>(`/chat/join/${encodeURIComponent(token)}`, {
+  const data = await apiFetch<JoinChatResponse>(`/chats/join/${encodeURIComponent(token)}`, {
     method: 'POST',
   });
   return data.chat;
@@ -80,7 +80,7 @@ interface InvitePreviewResponse {
 /** Возвращает название чата по invite-токену без вступления. */
 export async function fetchInvitePreview(token: string): Promise<InvitePreview> {
   const data = await apiFetch<InvitePreviewResponse>(
-    `/chat/join/${encodeURIComponent(token)}`,
+    `/chats/join/${encodeURIComponent(token)}`,
   );
   return data.invite;
 }
@@ -94,7 +94,7 @@ interface RenameChatResponse {
 export async function renameChat(chatId: number, name: string): Promise<Chat> {
   const params = new URLSearchParams({ name });
   const data = await apiFetch<RenameChatResponse>(
-    `/chat/${chatId}/rename?${params.toString()}`,
+    `/chats/${chatId}/rename?${params.toString()}`,
     { method: 'PATCH' },
   );
   return data.renamed_chat;

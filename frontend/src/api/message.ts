@@ -30,7 +30,7 @@ function buildMessageBody(options: ChatMessageOptions & { modelId?: number }) {
 }
 
 export async function fetchMessages(chatId: number): Promise<ApiMessage[]> {
-  const data = await apiFetch<MessagesResponse>(`/message/?chat_id=${chatId}`);
+  const data = await apiFetch<MessagesResponse>(`/messages/?chat_id=${chatId}`);
   return data.messages ?? [];
 }
 
@@ -53,7 +53,7 @@ function parseErrorDetail(raw: string, status: number): string {
 }
 
 export async function sendChatMessage(options: ChatMessageOptions): Promise<void> {
-  const res = await fetch('/message/send', {
+  const res = await fetch('/messages/send', {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -71,7 +71,7 @@ export async function streamMessage(
   options: SendMessageOptions,
   onChunk: (chunk: string) => void,
 ): Promise<void> {
-  const res = await fetch('/message/send', {
+  const res = await fetch('/messages/send', {
     method: 'POST',
     credentials: 'include',
     headers: {

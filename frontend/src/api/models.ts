@@ -18,7 +18,7 @@ interface LinkedModelsResponse {
 }
 
 export async function fetchModels(): Promise<ApiModel[]> {
-  const res = await fetch('/model/list', {
+  const res = await fetch('/models/list', {
     credentials: 'include',
   });
   if (!res.ok) {
@@ -50,7 +50,7 @@ function parseLinkedNames(raw: LinkedModelsResponse['linked_models']): string[] 
 /** Актуальные модели, привязанные к чату. 404 (чат без моделей) → []. */
 export async function fetchLinkedModels(chatId: number): Promise<string[]> {
   try {
-    const data = await apiFetch<LinkedModelsResponse>(`/model/linked?chat_id=${chatId}`);
+    const data = await apiFetch<LinkedModelsResponse>(`/models/linked?chat_id=${chatId}`);
     return parseLinkedNames(data.linked_models);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return [];
