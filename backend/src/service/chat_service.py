@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.src.utils.redis_keys import RedisKeys
 from backend.src.models.orm_models import Chat, ChatMember, ChatInviteLink
 from backend.src.schemas.chat_schema import ChatDTO
-from backend.src.schemas.custom import ChatMemberDTO, ChatTokenDTO
+from backend.src.schemas.custom import ChatMemberDTO, ChatTokenDTO, PreviewInviteDTO
 from backend.src.service.exceptions import NotFoundError, ForbiddenError
 
 
@@ -107,7 +107,7 @@ class ChatService:
             return result_dto
         return None
 
-    async def join_chat(self, session: AsyncSession, user_id: int, token: str):
+    async def join_chat(self, session: AsyncSession, user_id: int, token: str) -> ChatDTO | None:
         invite = await self.chat_repository.find_invite_link(session, token)
         if not invite:
             raise NotFoundError(message="Invite not found")
@@ -142,7 +142,7 @@ class ChatService:
                 return result_dto
         return None
 
-    async def preview_invite(self, session: AsyncSession, token: str, user_id: int) -> dict:
+    async def preview_invite(self, session: AsyncSession, token: str, user_id: int) -> PreviewInviteDTO:
         invite = await self.chat_repository.find_invite_link(session, token)
         if not invite:
             raise NotFoundError(message="Invite not found")
@@ -152,11 +152,12 @@ class ChatService:
         already_member = await self.chat_repository.user_in_chat_member(
             session, invite.chat_id, user_id
         )
-        return {
-            "name": chat.name,
-            "description": chat.description,
-            "already_member": already_member is not None,
-        }
+        preview_model = PreviewInviteDTO(
+            name=chat.name,
+            description=chat.description,
+            already_member=already_member,
+        )
+        return preview_model
 
     async def rename_chat(
         self, session: AsyncSession, user_id: int, chat_id: int, name: str
