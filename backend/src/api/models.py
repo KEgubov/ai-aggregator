@@ -4,32 +4,38 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.api.dependency import get_model_service, get_current_user, get_session
-from backend.src.schemas.custom import CurrentUserDTO
+from backend.src.schemas.custom import CurrentUserDTO, LinkedModelDTO, AIModelMetaDTO
 from backend.src.service.model_service import ModelService
 
 router = APIRouter(prefix="/models", tags=["Model"])
 
 
-@router.get("/list")
+@router.get(
+    "/list",
+    response_model=list[AIModelMetaDTO],
+)
 async def get_model_list(
     model_service: ModelService = Depends(get_model_service),
     current_user: CurrentUserDTO = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-) -> dict[str, str | Any]:
+) -> list[AIModelMetaDTO]:
     """Возвращает список доступных AI-моделей с метаданными для UI."""
     models = await model_service.list_model_validate(session)
     if not models:
         raise HTTPException(status_code=404, detail="No models found")
-    return {"status": "ok", "models": models}
+    return models
 
-@router.get("/linked")
+@router.get(
+    "/linked",
+    response_model=LinkedModelDTO,
+)
 async def get_linked_models(
     chat_id: int,
     model_service: ModelService = Depends(get_model_service),
     current_user: CurrentUserDTO = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-):
+) -> list[Any] | LinkedModelDTO:
     linked_models = await model_service.linked_model_validate(session, chat_id, current_user.user_id)
     if not linked_models:
-        return {"status": "ok", "linked_models": []}
-    return {"status": "ok", "linked_models": linked_models}
+        return []
+    return linked_models
