@@ -78,5 +78,12 @@ class ChatMemberDTO(BaseModel):
 class ChatTokenDTO(BaseModel):
     token: str
 
+
 class LinkedModelDTO(BaseModel):
     ai_models: list[str]
+
+
+class PreviewInviteDTO(BaseModel):
+    name: str
+    description: str
+    already_member: bool

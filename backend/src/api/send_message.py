@@ -11,7 +11,7 @@ from backend.src.api.dependency import (
     get_message_service,
     get_session,
 )
-from backend.src.schemas.custom import CurrentUserDTO
+from backend.src.schemas.custom import CurrentUserDTO, MessageListResponse
 from backend.src.schemas.message_schema import MessageSendDTO
 from backend.src.service.message_service import MessageService
 from backend.src.service.model_orchestrator import AIOrchestrator
@@ -56,13 +56,15 @@ async def stream_message(
     )
 
 
-@router.get("/")
+@router.get(
+    "/{chat_id}",
+    response_model=MessageListResponse
+)
 async def get_messages(
     chat_id: int,
     message_service: MessageService = Depends(get_message_service),
     current_user: CurrentUserDTO = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-):
+) -> MessageListResponse:
     """Возвращает все сообщения указанного чата."""
-    all_message = await message_service.validate_all_messages(session, chat_id)
-    return {"status": "ok", "messages": all_message.messages}
+    return await message_service.validate_all_messages(session, chat_id)

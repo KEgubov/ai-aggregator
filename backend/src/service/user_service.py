@@ -62,10 +62,13 @@ class UserService:
 
     async def change_username(
         self, session: AsyncSession, user_id: int, username: str
-    ) -> str:
+    ) -> UserDTO | None:
         """Обновляет username пользователя и возвращает новое значение."""
         new_username = await self.user_repository.update_username(
             session, user_id, username
         )
-        await self.redis_client.delete_key(RedisKeys.profile(user_id))
-        return new_username
+        if new_username:
+            result_dto = UserDTO.model_validate(new_username, from_attributes=True)
+            await self.redis_client.delete_key(RedisKeys.profile(user_id))
+            return result_dto
+        return None

@@ -2,6 +2,7 @@ from authx import AuthX
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette import status
 
 from backend.src.api.dependency import (
     get_user_service,
@@ -10,22 +11,25 @@ from backend.src.api.dependency import (
     get_session,
 )
 from backend.src.schemas.custom import LoginData
-from backend.src.schemas.user_schema import UserAddDTO
+from backend.src.schemas.user_schema import UserAddDTO, UserDTO
 from backend.src.service.auth_service import AuthService
 from backend.src.service.user_service import UserService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-@router.post("/register")
+@router.post(
+    "/register",
+    response_model=UserDTO,
+    status_code=status.HTTP_201_CREATED,
+)
 async def user_register(
     user: UserAddDTO,
     user_service: UserService = Depends(get_user_service),
     session: AsyncSession = Depends(get_session),
 ):
     """Регистрирует нового пользователя."""
-    user_add = await user_service.user_validate(session, user)
-    return {"status": "ok", "user": user_add}
+    return await user_service.user_validate(session, user)
 
 
 @router.post("/login")

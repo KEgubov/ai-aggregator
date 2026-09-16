@@ -7,17 +7,12 @@ export interface ApiModel {
   description: string;
 }
 
-interface ModelsListResponse {
-  status: string;
-  models: ApiModel[];
-}
-
 interface LinkedModelsResponse {
-  status: string;
-  linked_models: string[] | { ai_models?: string[] | null } | null;
+  ai_models?: string[] | null;
 }
 
 export async function fetchModels(): Promise<ApiModel[]> {
+  // Backend returns list[AIModelMetaDTO] directly
   const res = await fetch('/models/list', {
     credentials: 'include',
   });
@@ -33,15 +28,12 @@ export async function fetchModels(): Promise<ApiModel[]> {
     }
     throw new Error(detail);
   }
-  const data: ModelsListResponse = await res.json();
-  return data.models ?? [];
+  const data: ApiModel[] = await res.json();
+  return data ?? [];
 }
 
-function parseLinkedNames(raw: LinkedModelsResponse['linked_models']): string[] {
+function parseLinkedNames(raw: LinkedModelsResponse | null | undefined): string[] {
   if (!raw) return [];
-  if (Array.isArray(raw)) {
-    return raw.filter((name): name is string => typeof name === 'string' && name.length > 0);
-  }
   const names = raw.ai_models;
   if (!Array.isArray(names)) return [];
   return names.filter((name): name is string => typeof name === 'string' && name.length > 0);
@@ -50,8 +42,9 @@ function parseLinkedNames(raw: LinkedModelsResponse['linked_models']): string[] 
 /** Актуальные модели, привязанные к чату. 404 (чат без моделей) → []. */
 export async function fetchLinkedModels(chatId: number): Promise<string[]> {
   try {
-    const data = await apiFetch<LinkedModelsResponse>(`/models/linked?chat_id=${chatId}`);
-    return parseLinkedNames(data.linked_models);
+    // Backend: GET /models/linked/{chat_id} (path param, not query)
+    const data = await apiFetch<LinkedModelsResponse>(`/models/linked/${chatId}`);
+    return parseLinkedNames(data);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return [];
     throw err;

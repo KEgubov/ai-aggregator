@@ -40,7 +40,7 @@ class UserRepository:
             update(User)
             .where(User.user_id == user_id)
             .values(username=username)
-            .returning(User.username)
+            .returning(User)
         )
         result = await session.execute(stmt)
         user = result.scalar_one()
