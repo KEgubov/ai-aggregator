@@ -1,11 +1,6 @@
 import { apiFetch } from './client';
 import type { ApiMessage } from '../types/message';
 
-interface MessagesResponse {
-  status: string;
-  messages: ApiMessage[];
-}
-
 export interface ChatMessageOptions {
   chatId: number;
   content: string;
@@ -30,7 +25,9 @@ function buildMessageBody(options: ChatMessageOptions & { modelId?: number }) {
 }
 
 export async function fetchMessages(chatId: number): Promise<ApiMessage[]> {
-  const data = await apiFetch<MessagesResponse>(`/messages/?chat_id=${chatId}`);
+  // Backend: GET /messages/{chat_id} (path param, not query)
+  // Returns MessageListResponse directly
+  const data = await apiFetch<{ messages: ApiMessage[] }>(`/messages/${chatId}`);
   return data.messages ?? [];
 }
 

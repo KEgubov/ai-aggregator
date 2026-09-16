@@ -12,36 +12,23 @@ export interface LoginPayload {
   password: string;
 }
 
-interface RegisterResponse {
-  status: string;
-  user: {
-    user_id: number;
-    username: string;
-    email: string;
-    about_me: string;
-  };
-}
-
 interface LoginResponse {
   access_token: string;
 }
 
-interface ProfileResponse {
-  status: string;
-  profile: UserProfile;
+export interface RegisteredUser {
+  user_id: number;
+  username: string;
+  email: string;
+  about_me: string;
 }
 
-interface ChangeUsernameResponse {
-  status: string;
-  change_name: string;
-}
-
-export async function registerUser(payload: RegisterPayload): Promise<RegisterResponse['user']> {
-  const data = await apiFetch<RegisterResponse>('/auth/register', {
+export async function registerUser(payload: RegisterPayload): Promise<RegisteredUser> {
+  // Backend returns UserDTO directly (no wrapper)
+  return apiFetch<RegisteredUser>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return data.user;
 }
 
 export async function loginUser(payload: LoginPayload): Promise<void> {
@@ -56,15 +43,16 @@ export async function logoutUser(): Promise<void> {
 }
 
 export async function fetchProfile(): Promise<UserProfile> {
-  const data = await apiFetch<ProfileResponse>('/users/profile');
-  return data.profile;
+  // Backend returns UserProfileDTO directly (no wrapper)
+  return apiFetch<UserProfile>('/users/profile');
 }
 
 export async function changeUsername(username: string): Promise<string> {
-  const params = new URLSearchParams({ username });
-  const data = await apiFetch<ChangeUsernameResponse>(
-    `/users/profile/username?${params.toString()}`,
+  // Backend: PATCH /users/profile/{username} (path param, not query)
+  // Returns UserDTO; we extract the username field (string) as the component expects
+  const data = await apiFetch<{ username: string }>(
+    `/users/profile/${encodeURIComponent(username)}`,
     { method: 'PATCH' },
   );
-  return data.change_name;
+  return data.username;
 }
