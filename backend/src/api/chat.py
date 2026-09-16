@@ -65,7 +65,7 @@ async def delete_chat(
 
 
 @router.get(
-    "/members",
+    "/{chat_id}/members",
     response_model=list[ChatMemberDTO],
 )
 async def get_members(

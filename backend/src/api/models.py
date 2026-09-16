@@ -26,7 +26,7 @@ async def get_model_list(
     return models
 
 @router.get(
-    "/linked",
+    "/linked/{chat_id}",
     response_model=LinkedModelDTO,
 )
 async def get_linked_models(

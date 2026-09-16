@@ -57,7 +57,7 @@ async def stream_message(
 
 
 @router.get(
-    "/",
+    "/{chat_id}",
     response_model=MessageListResponse
 )
 async def get_messages(

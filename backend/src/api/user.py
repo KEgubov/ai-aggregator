@@ -27,7 +27,7 @@ async def get_profile(
 
 
 @router.patch(
-    "/profile/username",
+    "/profile/{username}",
     response_model=UserDTO,
 )
 async def change_username(
